@@ -1,0 +1,1292 @@
+openapi: 3.0.3
+info:
+  title: DCM Backend - OpenAPI-Document
+  description: |-
+    This is the OpenAPI 3.0 specification describing the containers used
+    for the backend in the context of the dcm in the lzvnrw-project.
+  version: 0.1.0
+servers:
+  - url: 'http://localhost:8080/'
+externalDocs:
+  description: See repository hosted by University of Münster
+  url: https://zivgitlab.uni-muenster.de/ULB/lzvnrw/team-se/dcm-backend-api
+tags:
+  - name: ingest
+    description: ingest-related endpoints
+  - name: config
+    description: configuration-related endpoints
+  - name: job
+    description: job execution-related endpoints
+paths:
+  /ping:
+    get:
+      summary: ping
+      description: Use as connection test. Returns 'pong'.
+      operationId: ping
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: pong
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+  /status:
+    get:
+      summary: container status
+      description: Returns Status (readiness) of container.
+      operationId: get_status
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Status'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+  /identify:
+    get:
+      summary: container self-description
+      description: Returns a detailed description of the container properties.
+      operationId: identify
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfDescription'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+  /report:
+    get:
+      summary: get report
+      description: |-
+        Returns Report if the job associated with the given token exists.
+      operationId: get_report
+      tags:
+        - ingest
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Report'
+                  - type: object
+                    properties:
+                      data:
+                        $ref: '#/components/schemas/JobData'
+                    example:
+                      data:
+                        success: false
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '503':
+          $ref: '#/components/responses/503Busy'
+  /ingest:
+    get:
+      summary: get ingest status
+      description:
+        On success, returns the deposit-object that has been collected
+        from the archive system.
+      operationId: deposit_status
+      tags:
+        - ingest
+      parameters:
+        - in: query
+          name: id
+          required: true
+          description: deposit identifier
+          example: "123456"
+          schema:
+            type: string
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deposit:
+                    $ref: '#/components/schemas/Deposit'
+                required:
+                  - deposit
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '502':
+          $ref: '#/components/responses/502BadGateway'
+    post:
+      summary: trigger ingest
+      description:
+        Triggers an ingest of a Submission Information Package (SIP)
+        into the archive system.
+        If the request is accepted, a 201-response is triggered
+        containing a JobToken.
+      operationId: ingest
+      tags:
+        - ingest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ingest:
+                  type: object
+                  properties:
+                    archive_identifier:
+                      $ref: '#/components/schemas/ArchiveIdentifier'
+                    rosetta:
+                      type: object
+                      description: rosetta-related request body
+                      properties:
+                        subdir:
+                          title: Subdirectory
+                          description:
+                            name of the SIP-directory to be ingested
+                          type: string
+                          example: 2468edf8-6706-4ff0-bd03-04512d082c28
+                        producer:
+                          title: Producer
+                          description:
+                            ID referencing a producer in rosetta
+                          type: string
+                          example: "12345678"
+                        material_flow:
+                          title: MaterialFlow
+                          description:
+                            ID referencing a Material Flow in rosetta
+                          type: string
+                          example: "12345678"
+                      required:
+                        - subdir
+                  required:
+                    - archive_identifier
+                callbackUrl:
+                  $ref: '#/components/schemas/CallbackUrl'
+              required:
+                - ingest
+      callbacks:
+        termination:
+          $ref: '#/components/callbacks/termination'
+      responses:
+        '201':
+          $ref: '#/components/responses/201AcceptedSubmission'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '503':
+          $ref: '#/components/responses/503Busy'
+    delete:
+      summary: abort job
+      description:
+        Aborts the execution of a job (if already running) or removes it
+        from queue (otherwise). This operation is performed
+        synchronously.
+      operationId: abort_ingest
+      tags:
+        - ingest
+      parameters:
+        - $ref: '#/components/parameters/Token'
+        - name: broadcast
+          in: query
+          description:
+            whether this request should be broadcasted
+            (only relevant in parallel deployment and only if message
+            broadcasting is configured)
+          schema:
+            type: boolean
+            default: true
+          required: false
+        - name: re-queue
+          in: query
+          description:
+            whether the associated token should be added to the queue
+            again
+          schema:
+            type: boolean
+            default: false
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                origin:
+                  type: string
+                  description: verbose origin of request
+                  example: frontend
+                reason:
+                  type: string
+                  description: verbose reason for request
+                  example: user abort
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example:
+                  "successfully aborted '37ee72d6-80ab-4dcd-a68d-f8d32766c80d'"
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '502':
+          $ref: '#/components/responses/502BadGateway'
+  /configure:
+    get:
+      summary: get config
+      description: Returns config by id if it exists.
+      operationId: get_config
+      tags:
+        - config
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobConfiguration'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+    post:
+      summary: set config
+      description: |-
+        Writes config-data and returns config id.
+
+        If the field 'id' in the given JobConfiguration is omitted, a
+        new id is generated instead.
+      operationId: set_config
+      tags:
+        - config
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobConfiguration'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    $ref: '#/components/schemas/ConfigId'
+                  name:
+                    type: string
+                    description: user-defined or auto-generated config name
+                required:
+                  - id
+                  - name
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+    options:
+      summary: list config ids
+      description: Returns an array of ids for available configurations.
+      operationId: list_configs
+      tags:
+        - config
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConfigId'
+    delete:
+      summary: delete config
+      description: Deletes configuration by id.
+      operationId: delete_config
+      tags:
+        - config
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Deleted config 'dab3e1bf-f655-4e57-938d-d6953612552b'."
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+  /job:
+    get:
+      summary: get info
+      description: |-
+        Returns Job info if the job associated with the given token exists.
+      operationId: get_info
+      tags:
+        - job
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: object
+                description: |-
+                  job info object
+
+                  See Job Processor API for details on fields report.data
+                  and report.children.
+                properties:
+                  report:
+                    allOf:
+                      - $ref: '#/components/schemas/Report'
+                      - type: object
+                        properties:
+                          data:
+                            type: object
+                            additionalProperties: true
+                          children:
+                            type: object
+                            additionalProperties: true
+                  token:
+                    $ref: '#/components/schemas/JobToken'
+                  metadata:
+                    type: object
+                    description: job execution-related metadata
+                    properties:
+                      produced:
+                        $ref: '#/components/schemas/MetadataRecord'
+                      consumed:
+                        $ref: '#/components/schemas/MetadataRecord'
+                      aborted:
+                        $ref: '#/components/schemas/MetadataRecord'
+                      completed:
+                        $ref: '#/components/schemas/MetadataRecord'
+                required:
+                  - report
+                  - token
+                  - metadata
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '503':
+          $ref: '#/components/responses/503Busy'
+    post:
+      summary: trigger job execution
+      description:
+        Triggers the execution of a job associated with a configuration
+        id.
+        If the request is accepted, a 201-response is triggered
+        containing a JobToken (generated by the Job Processor).
+      operationId: run
+      tags:
+        - job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  $ref: '#/components/schemas/ConfigId'
+              required:
+                - id
+      callbacks:
+        termination:
+          $ref: '#/components/callbacks/termination'
+      responses:
+        '201':
+          $ref: '#/components/responses/201AcceptedSubmission'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '500':
+          description: unknown problem
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Unknown problem occurred during submission"
+        '502':
+          description: problem with submission to Job Processor
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Error during submission: Service timed out"
+    options:
+      summary: list jobs
+      description:
+        Returns an array of jobs. The list can be filtered by providing
+        a valid configuration id or status-values.
+      operationId: list_jobs
+      tags:
+        - job
+      parameters:
+        - $ref: '#/components/parameters/OptionalConfigId'
+        - in: query
+          name: status
+          required: false
+          description: |-
+            comma-separated list of status identifiers
+
+            allowed values are
+            * scheduled
+            * queued
+            * running
+            * completed
+            * aborted
+          schema:
+            type: string
+            example: queued,running
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  description: |-
+                    job information
+
+                    token will only be provided if applicable (i.e. not
+                    in case of scheduled entries)
+
+                    id will only be provided if the entry is linked to a
+                    config
+                  type: object
+                  properties:
+                    status:
+                      description: current job status
+                      type: string
+                      enum:
+                        - scheduled
+                        - queued
+                        - running
+                        - completed
+                        - aborted
+                      example: running
+                    id:
+                      $ref: '#/components/schemas/ConfigId'
+                    token:
+                      $ref: '#/components/schemas/JobToken'
+                  required:
+                    - status
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+    delete:
+      summary: abort job
+      description:
+        Aborts job based on its JobToken-value. This operation is
+        performed synchronously. If given token is unknown, the request
+        is silently ignored.
+      operationId: abort
+      tags:
+        - job
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                origin:
+                  type: string
+                  description: verbose origin of request
+                  example: frontend
+                reason:
+                  type: string
+                  description: verbose reason for request
+                  example: user abort
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Aborted job '37ee72d6-80ab-4dcd-a68d-f8d32766c80d'."
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '502':
+          $ref: '#/components/responses/502BadGateway'
+components:
+  schemas:
+    MetadataRecord:
+      title: MetadataRecord
+      description: job execution-related metadata record info
+      properties:
+        by:
+          type: string
+          description: host name on which this record has been generated
+          example: https://www.lzv.nrw/job_processor
+        datetime:
+          $ref: '#/components/schemas/ISODateTimeMicro'
+    JobConfiguration:
+      title: JobConfiguration
+      description: job configuration
+      type: object
+      properties:
+        schedule:
+          description: scheduling-related settings
+          type: object
+          properties:
+            active:
+              description:
+                whether the scheduling for this config is active
+              type: boolean
+              example: true
+            start:
+              $ref: '#/components/schemas/ISODateTime'
+            end:
+              $ref: '#/components/schemas/ISODateTime'
+            repeat:
+              description: settings for repeating jobs
+              type: object
+              properties:
+                unit:
+                  description: execution cadence unit
+                  type: string
+                  enum:
+                    - second
+                    - minute
+                    - hour
+                    - day
+                    - week
+                    - monday
+                    - tuesday
+                    - wednesday
+                    - thursday
+                    - friday
+                    - saturday
+                    - sunday
+                  example: day
+                interval:
+                  description: execution cadence unit value
+                  type: integer
+                  minimum: 1
+                  example: 1
+              required:
+                - unit
+                - interval
+          required:
+            - active
+        id:
+          $ref: '#/components/schemas/ConfigId'
+        name:
+          description: user-defined configuration name
+          type: string
+          example: daily OAI-harvest
+        last_modified:
+          $ref: '#/components/schemas/ISODateTime'
+        job:
+          description: |-
+            job-related configuration details
+
+            This is forwarded to the Job Processor as the 'process'-object.
+
+            See Job Processor API for more information.
+          type: object
+          additionalProperties: true
+          example:
+            from: import_ies
+            args:
+              import_ies:
+                plugin: oai
+                args:
+                  metadata_prefix: oai_dc
+      required:
+        - job
+    ArchiveIdentifier:
+      title: ArchiveIdentifier
+      description: identifier of an archive system
+      type: string
+      enum:
+        - rosetta
+    Status:
+      title: ContainerStatus
+      description:
+        A ContainerStatus gives a summary of the container's status like
+        availability for job submissions
+      type: object
+      properties:
+        ready:
+          type: boolean
+          description: availability of container for a request
+          example: true
+      required:
+        - ready
+    ISODateTime:
+      title: ISODateTime
+      description: ISO-8601 datetime-stamp
+      type: string
+      pattern: /[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[+-][0-9]{2}:[0-9]{2}/
+      example: "2024-01-01T00:00:00+01:00"
+    ISODateTimeMicro:
+      title: ISODateTimeMicro
+      description: ISO-8601 datetime-stamp with microseconds
+      type: string
+      pattern: /[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}[+-][0-9]{2}:[0-9]{2}/
+      example: "2024-01-01T00:00:00.000000+01:00"
+    ConfigId: # see also components/parameters/ConfigId
+      title: ConfigId
+      description: unique identifier
+      type: string
+      example: dab3e1bf-f655-4e57-938d-d6953612552b
+    Token: # see also components/parameters/Token
+      title: Token
+      description: unique identifier
+      type: string
+      example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+    JobToken:
+      title: JobToken
+      description:
+        A JobToken is used to uniquely identify a specific job.
+      type: object
+      properties:
+        value:
+          $ref: '#/components/schemas/Token'
+        expires:
+          type: boolean
+          description: does the token expire
+          example: true
+        expires_at:
+          $ref: '#/components/schemas/ISODateTime'
+      required:
+        - value
+        - expires
+    LogMessage:
+      title: LogMessage
+      description: |-
+        This schema defines the format of the entries occurring in the
+        log of a Report. A LogMessage consists of
+
+        * datetime information (regarding time of message creation),
+        * an origin (who filed this message), and
+        * the actual message.
+      type: object
+      properties:
+        datetime:
+          $ref: '#/components/schemas/ISODateTime'
+        origin:
+          type: string
+          description: origin of message creation
+          example: Backend
+        body:
+          type: string
+          description: message body
+          example: Queued job.
+      required:
+        - datetime
+        - origin
+        - body
+    Log:
+      title: Log
+      description: |-
+        Common Log categories are: ERROR, WARNING, INFO, EVENT,
+        NETWORK, FILE_SYSTEM, STARTUP, SHUTDOWN, USER,
+        AUTHENTICATION, and SECURITY.
+      type: object
+      additionalProperties:
+        title: LogCategory
+        description: |-
+          list of LogMessage objects
+        type: array
+        items:
+          $ref: "#/components/schemas/LogMessage"
+      example:
+        EVENT:
+          - datetime: "2024-01-01T00:00:00+01:00"
+            origin: Backend
+            body: Queued job.
+          - datetime: "2024-01-01T00:00:02+01:00"
+            origin: Backend
+            body: Job exited normally.
+    Deposit:
+      title: Deposit
+      type: object
+      description: details about a deposit in the archive system
+      properties:
+        id:
+          type: string
+          description: ID of the Deposit activity
+          example: "123456"
+        status:
+          type: string
+          description: status of the Deposit activity
+          example: INPROCESS
+        sip_reason:
+          type: string
+          description: if applicable, reason SIP was rejected or declined
+          nullable: true
+          example: Files Rejected
+      required:
+        - id
+        - status
+    JobData:
+      title: JobData
+      description: |-
+        job output data (data-property in Report schema)
+      type: object
+      properties:
+        success:
+          type: boolean
+          description: overall success of the job
+        deposit:
+          $ref: '#/components/schemas/Deposit'
+      example:
+        success: false
+    Report:
+      title: Report
+      description: |-
+        A Report contains
+
+        * information on job details (host, token),
+        * information on the progress of a job,
+        * a collection of log messages (categorized), and
+        * job output data.
+      type: object
+      properties:
+        host:
+          type: string
+          description: service url where this report has been generated
+          example: https://www.lzv.nrw/transfer_module
+        token:
+          $ref: '#/components/schemas/JobToken'
+        args:
+          type: object
+          description: request body contents given during submission
+        progress:
+          type: object
+          properties:
+            status:
+              type: string
+              description: job status in processing pipeline
+              enum:
+                - queued
+                - running
+                - aborted
+                - completed
+            verbose:
+              type: string
+              description: verbose description of job-progress
+              example: mapping metadata
+            numeric:
+              type: integer
+              description: numeric representation of progress in percent
+              example: 25
+          required:
+            - status
+            - verbose
+            - numeric
+        log:
+          $ref: '#/components/schemas/Log'
+      required:
+        - host
+        - token
+        - args
+        - progress
+        - log
+      example:
+        host: https://www.lzv.nrw/backend
+        token:
+          value: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+          expires: true
+          expires_at: "2024-01-01T00:00:00+01:00"
+        args:
+          ingest:
+            subdir: 2468edf8-6706-4ff0-bd03-04512d082c28
+            producer: "12345678"
+            material_flow: "12345678"
+        progress:
+          status: completed
+          verbose: Job terminated normally.
+          numeric: 100
+        log:
+          ERROR:
+            - datetime: "2024-01-01T00:00:01+01:00"
+              origin: Backend
+              body: Problem occurred during SIP-ingest.
+          EVENT:
+            - datetime: "2024-01-01T00:00:00+01:00"
+              origin: Backend
+              body: Job accepted.
+            - datetime: "2024-01-01T00:00:02+01:00"
+              origin: Backend
+              body: Job terminated.
+    CallbackUrl:
+      type: string
+      description: job-termination callback url
+      example: https://www.lzv.nrw/callback
+    Plugin:
+      title: Plugin
+      type: object
+      description: DCM-service plugin
+      properties:
+        name:
+          type: string
+          description: plugin identifier
+          example: plugin-0
+        description:
+          type: string
+          description: description of plugin features
+          example: this plugin performs ...
+      required:
+        - name
+        - description
+    DBAdapter:
+      title: DBAdapter
+      type: object
+      description:
+        A DBAdapter characterizes an adapter for a database by type and
+        initialization settings.
+      properties:
+        type:
+          type: string
+          description: which adapter-type to use
+          enum:
+            - native
+            - http
+            - postgres
+          example: http
+        settings:
+          type: object
+          description: |-
+            JSON object used to initialize the adapter
+
+            adapter-specific set of settings (used during
+            initialization); see dcm-common.db-subpackage for details
+          additionalProperties: true
+          example:
+            url: https://www.lzv.nrw/db
+            timeout: 10
+            proxies:
+              http: https://www.lzv.nrw/proxy
+      required:
+        - type
+        - settings
+    SelfDescription:
+      type: object
+      description: information regarding the service's properties
+      properties:
+        description:
+          type: string
+          description:
+            a verbose self-description of the service functionality
+          example:
+            This service provides endpoints for ...
+        version:
+          type: object
+          description: collection of version strings
+          properties:
+            api:
+              type: string
+              description: version string of the implemented API
+              example: "0.2.0"
+            app:
+              type: string
+              description: version string of the app
+              example: "0.1.0"
+            python:
+              type: string
+              description: version of the python implementation
+              example: 3.10.12 (main, Mar 22 2024, 16:50:05) [GCC 11.4.0]
+            software:
+              type: object
+              description: deployed software versions
+            lib:
+              type: object
+              description: deployed library versions
+              additionalProperties:
+                type: string
+                description: version string
+                example: "0.1.0"
+              example:
+                dependency-a: "1.0.0"
+                dependency-b: "0.2.0.post1"
+          required:
+            - api
+            - app
+            - python
+            - software
+            - lib
+        configuration:
+          type: object
+          description: service configuration details
+          properties:
+            settings:
+              type: object
+              properties:
+                allow_cors:
+                  type: boolean
+                  description: whether CORS requests are allowed
+                  example: true
+                orchestration:
+                  type: object
+                  description: orchestration-related settings
+                  properties:
+                    at_startup:
+                      type: boolean
+                      description:
+                        whether orchestration-processing loop is run at startup
+                      example: true
+                    queue:
+                      $ref: '#/components/schemas/DBAdapter'
+                    registry:
+                      $ref: '#/components/schemas/DBAdapter'
+                    token:
+                      type: object
+                      description: orchestration token-related settings
+                      properties:
+                        expiration:
+                          type: boolean
+                          description: whether job tokens (and their
+                            associated info like report) expire
+                          example: true
+                        duration:
+                          type: integer
+                          description:
+                            time until job token expires in seconds
+                          example: 3600
+                      required:
+                        - expiration
+                        - duration
+                    debug:
+                      type: boolean
+                      description: whether to have orchestrator print
+                        debug-information
+                      example: true
+                    controls_api:
+                      type: boolean
+                      description: whether the orchestration-controls
+                        API is available
+                      example: true
+                    abort:
+                      type: object
+                      description: |-
+                        abort-related settings
+
+                        only relevant in parallel deployment
+                      properties:
+                        subscription:
+                          type: boolean
+                          description:
+                            whether a subscription to the abort-notifications
+                            is made
+                          example: true
+                        url:
+                          type: string
+                          description: url of the notification service
+                          example: https://www.lzv.nrw/abort-notifications
+                        timeout:
+                          type: object
+                          description: timeout-related settings
+                          properties:
+                            duration:
+                              type: number
+                              description: timeout duration
+                              example: 1.0
+                          required:
+                            - duration
+                        callback:
+                          type: string
+                          description: |-
+                            url for abort-callbacks
+
+                            if omitted, the subscriber's request address
+                            is used (as determined by the notification
+                            service)
+                          example: https://www.lzv.nrw/subscriber
+                      required:
+                        - subscription
+                    daemon_interval:
+                      type: number
+                      description:
+                        interval of orchestrator-restarts (after crash) in
+                        seconds
+                      example: 1
+                    orchestrator_interval:
+                      type: number
+                      description: time in seconds between each iteration
+                        of the orchestrator's processing loop
+                      example: 1
+                  required:
+                    - at_startup
+                    - queue
+                    - registry
+                    - token
+                    - debug
+                    - controls_api
+                    - abort
+                database:
+                  type: object
+                  description:
+                    database-related settings (configuration-database,
+                    report-database)
+                  properties:
+                    configuration:
+                      $ref: '#/components/schemas/DBAdapter'
+                    report:
+                      $ref: '#/components/schemas/DBAdapter'
+                  required:
+                    - configuration
+                    - report
+                scheduling:
+                  type: object
+                  description: scheduling-related settings
+                  properties:
+                    controls_api:
+                      type: boolean
+                      description:
+                        whether the scheduling-controls API is available
+                      example: true
+                    at_startup:
+                      type: boolean
+                      description:
+                        whether the scheduling-loop is running at startup
+                      example: true
+                    interval:
+                      type: number
+                      description:
+                        interval of scheduling-iterations in seconds
+                      example: 1
+                  required:
+                    - controls_api
+                    - at_startup
+                    - interval
+                job:
+                  type: object
+                  description: job-execution related settings
+                  properties:
+                    timeout:
+                      type: object
+                      description: service timeout-related settings
+                      properties:
+                        duration:
+                          type: integer
+                          description: timeout duration in seconds
+                          example: 30
+                      required:
+                        - duration
+                    polling_interval:
+                      type: number
+                      description: interval of progress-polling in seconds
+                      example: 1
+                  required:
+                    - timeout
+                    - polling_interval
+                ingest:
+                  type: object
+                  description: ingest-related settings
+                  properties:
+                    network:
+                      type: object
+                      description: network-related settings
+                      properties:
+                        url:
+                          type: string
+                          description: url to the archive instance
+                          example: https://lzv-test.hbz-nrw.de
+                        proxy:
+                          type: object
+                          description:
+                            JSON object containing a mapping of
+                            protocol name and corresponding proxy-address
+                          additionalProperties:
+                            type: string
+                          example:
+                            http: https://www.lzv.nrw/proxy
+                      required:
+                        - url
+                    archive_identifier:
+                      $ref: '#/components/schemas/ArchiveIdentifier'
+                    archive_settings:
+                      oneOf:
+                        - allOf:
+                            - type: object
+                              title: rosetta
+                              description:
+                                rosetta-related settings
+                              properties:
+                                auth:
+                                  type: string
+                                  description:
+                                    path to file with the Authorization
+                                    HTTP header for all requests
+                                  example: ~/.rosetta/rosetta_auth
+                                material_flow:
+                                  type: string
+                                  description:
+                                    ID referencing a Material Flow in rosetta
+                                  example: "12345678"
+                                producer:
+                                  type: string
+                                  description:
+                                    ID referencing a producer in rosetta
+                                  example: "12345678"
+                              required:
+                                - auth
+                                - material_flow
+                                - producer
+                  required:
+                    - network
+                    - archive_identifier
+                    - archive_settings
+              required:
+                - allow_cors
+                - orchestration
+                - database
+                - scheduling
+                - job
+                - ingest
+            plugins:
+              type: object
+              description: mapping of available plugins
+              additionalProperties:
+                $ref: "#/components/schemas/Plugin"
+              example:
+                plugin-0:
+                  name: plugin-0
+                  description: this plugin performs ...
+            services:
+              type: object
+              description:
+                mapping of hostname and url for secondary DCM-services
+              additionalProperties:
+                title: Service
+                type: string
+                format: url
+              example:
+                service: <service-url>
+          required:
+            - settings
+            - plugins
+            - services
+      required:
+        - description
+        - version
+        - configuration
+  parameters:
+    Token: # see also components/schemas/Token
+      in: query
+      name: token
+      required: true
+      description:
+        unique identifier for jobs
+      example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+      schema:
+        $ref: '#/components/schemas/Token'
+    ConfigId: # see also components/schemas/ConfigId
+      in: query
+      name: id
+      required: true
+      description:
+        unique identifier for job-configurations
+      example: dab3e1bf-f655-4e57-938d-d6953612552b
+      schema:
+        $ref: '#/components/schemas/ConfigId'
+    OptionalConfigId: # see also components/schemas/ConfigId
+      in: query
+      name: id
+      required: false
+      description:
+        unique identifier for job-configurations
+      example: dab3e1bf-f655-4e57-938d-d6953612552b
+      schema:
+        $ref: '#/components/schemas/ConfigId'
+  responses:
+    201AcceptedSubmission:
+      description: submission success
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/JobToken'
+    400BadRequest:
+      description: malformed request body
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Missing required argument <X>"
+    404NoTarget:
+      description: target not found
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Resource not found. Target does not exist."
+    422SemanticProblem:
+      description: semantic problem
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Argument <X> has the wrong type"
+    502BadGateway:
+      description: bad gateway
+      content:
+        text/plain:
+          schema:
+            type: string
+            example:
+              "notification service unavailable"
+    503Busy:
+      description: container is busy
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Service unavailable: maximum number of submissions reached."
+  callbacks:
+    termination:
+      '{$request.body#/CallbackUrl}':
+        post:
+          requestBody:
+            required: true
+            content:
+              application/json:
+                schema:
+                  $ref: '#/components/schemas/JobToken'
+          responses:
+            '200':
+              description: accept callback
