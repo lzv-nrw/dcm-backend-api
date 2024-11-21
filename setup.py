@@ -2,10 +2,11 @@ import os
 from setuptools import setup
 
 setup(
-    version="0.1.0",
+    version="0.1.1",
     name="dcm-backend-api",
-    description="api for backend-containers",
+    description="specification of the DCM Backend API",
     author="LZV.nrw",
+    license="MIT",
     install_requires=[
     ],
     packages=[

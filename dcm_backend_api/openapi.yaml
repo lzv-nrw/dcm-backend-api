@@ -4,7 +4,7 @@ info:
   description: |-
     This is the OpenAPI 3.0 specification describing the containers used
     for the backend in the context of the dcm in the lzvnrw-project.
-  version: 0.1.0
+  version: 0.1.1
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
