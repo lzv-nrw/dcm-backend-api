@@ -4,7 +4,7 @@ info:
   description: |-
     This is the OpenAPI 3.0 specification describing the containers used
     for the backend in the context of the dcm in the lzvnrw-project.
-  version: 0.1.1
+  version: 1.0.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -17,6 +17,8 @@ tags:
     description: configuration-related endpoints
   - name: job
     description: job execution-related endpoints
+  - name: user
+    description: user-related endpoints
 paths:
   /ping:
     get:
@@ -251,13 +253,14 @@ paths:
           $ref: '#/components/responses/400BadRequest'
         '502':
           $ref: '#/components/responses/502BadGateway'
-  /configure:
+  /job/configure:
     get:
-      summary: get config
-      description: Returns config by id if it exists.
-      operationId: get_config
+      summary: get job config
+      description: Returns job configuration by id.
+      operationId: get_job_config
       tags:
         - config
+        - job
       parameters:
         - $ref: '#/components/parameters/ConfigId'
       responses:
@@ -274,15 +277,16 @@ paths:
         '404':
           $ref: '#/components/responses/404NoTarget'
     post:
-      summary: set config
+      summary: set job config
       description: |-
-        Writes config-data and returns config id.
+        Writes job configuration-data and returns configuration id.
 
         If the field 'id' in the given JobConfiguration is omitted, a
         new id is generated instead.
-      operationId: set_config
+      operationId: set_job_config
       tags:
         - config
+        - job
       requestBody:
         required: true
         content:
@@ -310,11 +314,12 @@ paths:
         '422':
           $ref: '#/components/responses/422SemanticProblem'
     options:
-      summary: list config ids
-      description: Returns an array of ids for available configurations.
-      operationId: list_configs
+      summary: list job config ids
+      description: Returns an array of job configuration ids.
+      operationId: list_job_configs
       tags:
         - config
+        - job
       responses:
         '200':
           description: success
@@ -325,11 +330,12 @@ paths:
                 items:
                   $ref: '#/components/schemas/ConfigId'
     delete:
-      summary: delete config
-      description: Deletes configuration by id.
-      operationId: delete_config
+      summary: delete job config
+      description: Deletes job configuration by id.
+      operationId: delete_job_config
       tags:
         - config
+        - job
       parameters:
         - $ref: '#/components/parameters/ConfigId'
       responses:
@@ -346,10 +352,10 @@ paths:
           $ref: '#/components/responses/422SemanticProblem'
   /job:
     get:
-      summary: get info
+      summary: get job info
       description: |-
         Returns Job info if the job associated with the given token exists.
-      operationId: get_info
+      operationId: get_job_info
       tags:
         - job
       parameters:
@@ -550,8 +556,260 @@ paths:
           $ref: '#/components/responses/400BadRequest'
         '502':
           $ref: '#/components/responses/502BadGateway'
+  /user:
+    post:
+      summary: authenticate user
+      description: Validates credentials for an authentication request.
+      operationId: login
+      tags:
+        - user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserCredentials'
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          description: failed
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: FAILED
+        '403':
+          description: inactive user
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: account is inactive
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+  /user/password:
+    put:
+      summary: change user password
+      description: Changes user password.
+      operationId: change_user_password
+      tags:
+        - user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+              - $ref: '#/components/schemas/UserCredentials'
+              - type: object
+                properties:
+                  newPassword:
+                    type: string
+                    description: new user password
+                    format: password
+              required:
+                - newPassword
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '401':
+          description: failed
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: FAILED
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+  /user/configure:
+    options:
+      summary: list users
+      description: Returns an array of user identifiers.
+      operationId: list_users
+      tags:
+        - user
+        - config
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  description: user identifier
+                  type: string
+                example:
+                  - user0
+                  - user1
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+    get:
+      summary: get user config
+      description: Returns user configuration by userId.
+      operationId: get_user_config
+      tags:
+        - config
+        - user
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserConfiguration'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+    post:
+      summary: create new user config
+      description: Creates a new user configuration.
+      operationId: create_user
+      tags:
+        - config
+        - user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserConfiguration'
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '409':
+          description: conflicting data
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Resource does already exist."
+    put:
+      summary: update existing user config
+      description: Updates existing user configuration.
+      operationId: update_user
+      tags:
+        - config
+        - user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserConfiguration'
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+    delete:
+      summary: delete user config
+      description: Deletes user configuration.
+      operationId: delete_user_config
+      tags:
+        - config
+        - user
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Deleted config 'dab3e1bf-f655-4e57-938d-d6953612552b'."
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
 components:
   schemas:
+    UserConfiguration:
+      title: UserConfiguration
+      description: user configuration
+      properties:
+        userId:
+          type: string
+          description: user identifier
+          example: user0
+        externalId:
+          type: string
+          description: external user identifier
+          example: userA
+        firstname:
+          type: string
+          description: user first name
+          example: Pete
+        lastname:
+          type: string
+          description: user last name
+          example: Programmer
+        email:
+          type: string
+          description: user email address
+          format: email
+          example: pete@lzv.nrw
+        roles:
+          type: array
+          items:
+            description: user role
+            type: string
+          example:
+            - admin
+            - curator
+      required:
+        - userId
+    UserCredentials:
+      title: UserCredentials
+      description: user credentials
+      properties:
+        userId:
+          type: string
+          description: user identifier
+          example: user0
+        password:
+          type: string
+          description: login pass
+          format: password
+          example: password
+      required:
+        - userId
+        - password
     MetadataRecord:
       title: MetadataRecord
       description: job execution-related metadata record info
@@ -670,7 +928,7 @@ components:
       example: "2024-01-01T00:00:00.000000+01:00"
     ConfigId: # see also components/parameters/ConfigId
       title: ConfigId
-      description: unique identifier
+      description: unique identifier for configurations
       type: string
       example: dab3e1bf-f655-4e57-938d-d6953612552b
     Token: # see also components/parameters/Token
@@ -1061,16 +1319,18 @@ components:
                 database:
                   type: object
                   description:
-                    database-related settings (configuration-database,
-                    report-database)
+                    database-related settings
                   properties:
-                    configuration:
+                    jobConfiguration:
                       $ref: '#/components/schemas/DBAdapter'
                     report:
                       $ref: '#/components/schemas/DBAdapter'
+                    userConfiguration:
+                      $ref: '#/components/schemas/DBAdapter'
                   required:
-                    - configuration
+                    - jobConfiguration
                     - report
+                    - userConfiguration
                 scheduling:
                   type: object
                   description: scheduling-related settings
@@ -1172,6 +1432,23 @@ components:
                     - network
                     - archive_identifier
                     - archive_settings
+                user:
+                  type: object
+                  description: user API-related settings
+                  properties:
+                    user_activation:
+                      type: boolean
+                      description:
+                        whether new accounts need activation before use
+                      example: true
+                    activation_url_fmt:
+                      type: string
+                      description:
+                        python format-string used to generate user
+                        activation url
+                      example: "https://lzv.nrw/user-activation?pass={password}"
+                  required:
+                    - user_activation
               required:
                 - allow_cors
                 - orchestration
@@ -1179,6 +1456,7 @@ components:
                 - scheduling
                 - job
                 - ingest
+                - user
             plugins:
               type: object
               description: mapping of available plugins
@@ -1220,8 +1498,7 @@ components:
       in: query
       name: id
       required: true
-      description:
-        unique identifier for job-configurations
+      description: unique identifier for configurations
       example: dab3e1bf-f655-4e57-938d-d6953612552b
       schema:
         $ref: '#/components/schemas/ConfigId'
@@ -1229,8 +1506,7 @@ components:
       in: query
       name: id
       required: false
-      description:
-        unique identifier for job-configurations
+      description: unique identifier for configurations
       example: dab3e1bf-f655-4e57-938d-d6953612552b
       schema:
         $ref: '#/components/schemas/ConfigId'

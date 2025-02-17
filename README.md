@@ -3,8 +3,10 @@
 The 'DCM Backend'-API provides functionality to
 * trigger an ingest in the archive-system,
 * collect the current ingest-status,
-* manage job configurations, and
-* control job execution.
+* manage job configurations,
+* control job execution,
+* authenticate local users, and
+* manage user configurations.
 
 This repository contains the corresponding OpenAPI-document.
 For the associated implementation, please refer to the sibling package [`dcm-backend`](https://github.com/lzv-nrw/dcm-backend).
