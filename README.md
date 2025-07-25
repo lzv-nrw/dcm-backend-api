@@ -3,10 +3,9 @@
 The 'DCM Backend'-API provides functionality to
 * trigger an ingest in the archive-system,
 * collect the current ingest-status,
-* manage job configurations,
 * control job execution,
 * authenticate local users, and
-* manage user configurations.
+* manage user/workspace/template/job configurations.
 
 This repository contains the corresponding OpenAPI-document.
 For the associated implementation, please refer to the sibling package [`dcm-backend`](https://github.com/lzv-nrw/dcm-backend).
@@ -34,6 +33,10 @@ In order to manually build these packages, perform the following actions:
 1. Run the generator
    ```
    java -jar ../openapi-generator-cli.jar generate -i dcm_backend_api/openapi.yaml -g python -o sdk -c config.json
+   ```
+1. Apply available patches by running
+   ```
+   /bin/bash apply_patch.sh sdk/dcm_backend_sdk
    ```
 
 # Contributors

@@ -1,5 +1,20 @@
 # Changelog
 
+## [2.0.0] - 2025-07-25
+
+### Changed
+
+- **Breaking:** refactored ingest-API and related schemas
+- **Breaking:** refactored job-API and related schemas
+- **Breaking:** updated SelfDescription-schema for new scheduler implementation
+- **Breaking:** updated user-API schemas
+- **Breaking:** replaced roles with groups-object in UserConfiguration-schema
+
+### Added
+
+- added initial template-API
+- added initial workspace-API
+
 ## [1.0.0] - 2025-02-17
 
 ### Changed

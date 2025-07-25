@@ -4,7 +4,7 @@ info:
   description: |-
     This is the OpenAPI 3.0 specification describing the containers used
     for the backend in the context of the dcm in the lzvnrw-project.
-  version: 1.0.0
+  version: 2.0.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -19,6 +19,10 @@ tags:
     description: job execution-related endpoints
   - name: user
     description: user-related endpoints
+  - name: workspace
+    description: workspace-related endpoints
+  - name: template
+    description: template-related endpoints
 paths:
   /ping:
     get:
@@ -98,14 +102,21 @@ paths:
     get:
       summary: get ingest status
       description:
-        On success, returns the deposit-object that has been collected
-        from the archive system.
-      operationId: deposit_status
+        On success, returns archive-specific information on the requested
+        object.
+      operationId: ingest_status
       tags:
         - ingest
       parameters:
         - in: query
-          name: id
+          name: archiveId
+          required: true
+          description: unique identifier for archive configuration
+          example: dab3e1bf-f655-4e57-938d-d6953612552b
+          schema:
+            $ref: '#/components/schemas/ConfigId'
+        - in: query
+          name: depositId
           required: true
           description: deposit identifier
           example: "123456"
@@ -117,12 +128,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
-                properties:
-                  deposit:
-                    $ref: '#/components/schemas/Deposit'
-                required:
-                  - deposit
+                $ref: '#/components/schemas/JobData'
         '400':
           $ref: '#/components/responses/400BadRequest'
         '422':
@@ -149,34 +155,25 @@ paths:
                 ingest:
                   type: object
                   properties:
-                    archive_identifier:
-                      $ref: '#/components/schemas/ArchiveIdentifier'
-                    rosetta:
+                    archiveId:
+                      type: string
+                      description:
+                        archive configuration id (not implemented yet)
+                      example: 00873df3-150b-47f7-aceb-873de18c1cac
+                    target:
                       type: object
-                      description: rosetta-related request body
-                      properties:
-                        subdir:
-                          title: Subdirectory
-                          description:
-                            name of the SIP-directory to be ingested
-                          type: string
-                          example: 2468edf8-6706-4ff0-bd03-04512d082c28
-                        producer:
-                          title: Producer
-                          description:
-                            ID referencing a producer in rosetta
-                          type: string
-                          example: "12345678"
-                        material_flow:
-                          title: MaterialFlow
-                          description:
-                            ID referencing a Material Flow in rosetta
-                          type: string
-                          example: "12345678"
-                      required:
-                        - subdir
+                      description: |-
+                        archive target configuration; expected properties
+                        depend on the type of archive
+
+                        ### 'rosetta-rest-api-v0':
+                        See 'RosettaTarget'-schema
+                      additionalProperties: true
+                      example:
+                        subdirectory: "path/to/resource"
                   required:
-                    - archive_identifier
+                    - archiveId
+                    - target
                 callbackUrl:
                   $ref: '#/components/schemas/CallbackUrl'
               required:
@@ -269,7 +266,26 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/JobConfiguration'
+                allOf:
+                  - $ref: '#/components/schemas/ConfigurationMetadataCreated'
+                  - $ref: '#/components/schemas/ConfigurationMetadataModified'
+                  - $ref: '#/components/schemas/JobConfiguration'
+                  - type: object
+                    properties:
+                      id:
+                        type: string
+                        description: job configuration identifier
+                        example: 26046769-6f0f-4dc4-8725-0cfaa74b9c00
+                      workspaceId:
+                        type: string
+                        description: workspace identifier
+                        example: 871d62ad-34bb-4a7e-8c45-780ab1918398
+                      latestExec:
+                        $ref: '#/components/schemas/Token'
+                      scheduledExec:
+                        $ref: '#/components/schemas/ISODateTime'
+                    required:
+                      - id
         '400':
           $ref: '#/components/responses/400BadRequest'
         '422':
@@ -277,7 +293,7 @@ paths:
         '404':
           $ref: '#/components/responses/404NoTarget'
     post:
-      summary: set job config
+      summary: set job configuration
       description: |-
         Writes job configuration-data and returns configuration id.
 
@@ -292,7 +308,9 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/JobConfiguration'
+              allOf:
+                - $ref: '#/components/schemas/ConfigurationMetadataCreated'
+                - $ref: '#/components/schemas/JobConfiguration'
       responses:
         '200':
           description: success
@@ -303,14 +321,49 @@ paths:
                 properties:
                   id:
                     $ref: '#/components/schemas/ConfigId'
-                  name:
-                    type: string
-                    description: user-defined or auto-generated config name
                 required:
                   - id
-                  - name
         '400':
           $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '409':
+          $ref: '#/components/responses/409Conflict'
+    put:
+      summary: update job configuration
+      description: Updates existing job configuration-data.
+      operationId: update_job_config
+      tags:
+        - config
+        - job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ConfigurationMetadataModified'
+                - $ref: '#/components/schemas/JobConfiguration'
+                - type: object
+                  properties:
+                    id:
+                      type: string
+                      description: job configuration identifier
+                      example: 26046769-6f0f-4dc4-8725-0cfaa74b9c00
+                  required:
+                    - id
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
         '422':
           $ref: '#/components/responses/422SemanticProblem'
     options:
@@ -354,12 +407,31 @@ paths:
     get:
       summary: get job info
       description: |-
-        Returns Job info if the job associated with the given token exists.
+        Returns job info if the job associated with the given token exists.
       operationId: get_job_info
       tags:
         - job
       parameters:
-        - $ref: '#/components/parameters/Token'
+        - in: query
+          name: token
+          required: true
+          description: unique identifier for jobs
+          example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+          schema:
+            $ref: '#/components/schemas/Token'
+        - in: query
+          name: keys
+          required: false
+          description: |-
+            comma-separated list of properties to be collected
+            (from those of the response object schema in this endpoint)
+
+            if omitted, all available properties are returned
+
+            token will always be included
+          schema:
+            type: string
+            example: token,jobConfigId,status
       responses:
         '200':
           description: success
@@ -367,13 +439,54 @@ paths:
             application/json:
               schema:
                 type: object
-                description: |-
-                  job info object
-
-                  See Job Processor API for details on fields report.data
-                  and report.children.
+                description: job info object
                 properties:
+                  token:
+                    type: string
+                    description: job token
+                  jobConfigId:
+                    type: string
+                    description: associated job configuration id
+                    nullable: true
+                  userTriggered:
+                    type: string
+                    description: user identifier
+                    example: adbe3793-1b77-4ee1-ad64-447be529b21c
+                  datetimeTriggered:
+                    $ref: '#/components/schemas/ISODateTime'
+                  triggerType:
+                    type: string
+                    description: trigger type
+                    enum:
+                      - manual
+                      - scheduled
+                      - onetime
+                      - test
+                  status:
+                    type: string
+                    description: job status
+                    enum:
+                      - queued
+                      - running
+                      - completed
+                      - aborted
+                  success:
+                    type: boolean
+                    description:
+                      whether all records in this job have been processed
+                      successfully
+                    example: true
+                  datetimeStarted:
+                    $ref: '#/components/schemas/ISODateTimeMicro'
+                  datetimeEnded:
+                    $ref: '#/components/schemas/ISODateTimeMicro'
                   report:
+                    type: object
+                    description: |-
+                      job report object
+
+                      See Job Processor API for details on fields data
+                      and children.
                     allOf:
                       - $ref: '#/components/schemas/Report'
                       - type: object
@@ -384,28 +497,28 @@ paths:
                           children:
                             type: object
                             additionalProperties: true
-                  token:
-                    $ref: '#/components/schemas/JobToken'
-                  metadata:
-                    type: object
-                    description: job execution-related metadata
-                    properties:
-                      produced:
-                        $ref: '#/components/schemas/MetadataRecord'
-                      consumed:
-                        $ref: '#/components/schemas/MetadataRecord'
-                      aborted:
-                        $ref: '#/components/schemas/MetadataRecord'
-                      completed:
-                        $ref: '#/components/schemas/MetadataRecord'
+                  templateId:
+                    type: string
+                    description: template identifier
+                    example: 871d62ad-34bb-4a7e-8c45-780ab1918398
+                  workspaceId:
+                    type: string
+                    description: workspace identifier
+                    example: 871d62ad-34bb-4a7e-8c45-780ab1918398
+                  records:
+                    type: array
+                    description:
+                      list of completed records associated with this job
+                    items:
+                      $ref: '#/components/schemas/Record'
                 required:
-                  - report
                   - token
-                  - metadata
         '400':
           $ref: '#/components/responses/400BadRequest'
         '404':
           $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
         '503':
           $ref: '#/components/responses/503Busy'
     post:
@@ -427,6 +540,10 @@ paths:
               properties:
                 id:
                   $ref: '#/components/schemas/ConfigId'
+                userTriggered:
+                  type: string
+                  description: user identifier
+                  example: adbe3793-1b77-4ee1-ad64-447be529b21c
               required:
                 - id
       callbacks:
@@ -442,19 +559,9 @@ paths:
         '422':
           $ref: '#/components/responses/422SemanticProblem'
         '500':
-          description: unknown problem
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: "Unknown problem occurred during submission"
+          $ref: '#/components/responses/500ServerError'
         '502':
-          description: problem with submission to Job Processor
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: "Error during submission: Service timed out"
+          $ref: '#/components/responses/502BadGateway'
     options:
       summary: list jobs
       description:
@@ -480,6 +587,33 @@ paths:
           schema:
             type: string
             example: queued,running
+        - in: query
+          name: from
+          required: false
+          description:
+            filter output with respect to datetimeStarted and datetimeEnded
+          schema:
+            type: string
+            description: ISO-8601 datetime
+            pattern: ^[0-9]{4}(-[0-9]{2}(-[0-9]{2}(T[0-9]{2}(:[0-9]{2}(:[0-9]{2}(\.[0-9]{6}([+-][0-9]{2}:[0-9]{2})?)?)?)?)?)?)?$
+            example: "2024-01-01"
+        - in: query
+          name: to
+          required: false
+          description:
+            filter output with respect to datetimeStarted and datetimeEnded
+          schema:
+            type: string
+            description: ISO-8601 datetime
+            pattern: ^[0-9]{4}(-[0-9]{2}(-[0-9]{2}(T[0-9]{2}(:[0-9]{2}(:[0-9]{2}(\.[0-9]{6}([+-][0-9]{2}:[0-9]{2})?)?)?)?)?)?)?$
+            example: "2024-01-01"
+        - in: query
+          name: success
+          required: false
+          description: filter output with respect to job success
+          schema:
+            type: boolean
+            example: false
       responses:
         '200':
           description: success
@@ -487,33 +621,9 @@ paths:
             application/json:
               schema:
                 type: array
+                description: list of matching token values
                 items:
-                  description: |-
-                    job information
-
-                    token will only be provided if applicable (i.e. not
-                    in case of scheduled entries)
-
-                    id will only be provided if the entry is linked to a
-                    config
-                  type: object
-                  properties:
-                    status:
-                      description: current job status
-                      type: string
-                      enum:
-                        - scheduled
-                        - queued
-                        - running
-                        - completed
-                        - aborted
-                      example: running
-                    id:
-                      $ref: '#/components/schemas/ConfigId'
-                    token:
-                      $ref: '#/components/schemas/JobToken'
-                  required:
-                    - status
+                  $ref: '#/components/schemas/Token'
         '400':
           $ref: '#/components/responses/400BadRequest'
         '422':
@@ -556,6 +666,85 @@ paths:
           $ref: '#/components/responses/400BadRequest'
         '502':
           $ref: '#/components/responses/502BadGateway'
+  /job-test:
+    post:
+      summary: run test-job
+      description:
+        Triggers the execution of a test-job using the given job-
+        configuration. A test-job is limited to the dcm-internal stages
+        of the processing pipeline.
+
+        If the request is accepted, a 201-response is triggered
+        containing a JobToken (generated by the Job Processor).
+
+        Note that some properties (e.g., scheduling) will be ignored.
+      operationId: run_test_job
+      tags:
+        - config
+        - job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobConfiguration'
+      responses:
+        '201':
+          $ref: '#/components/responses/201AcceptedSubmission'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '500':
+          $ref: '#/components/responses/500ServerError'
+        '502':
+          $ref: '#/components/responses/502BadGateway'
+  /job/records:
+    get:
+      summary: get records
+      description: |-
+        Returns an array of job records. At least one of the (mutually
+        exclusive) query-filters 'id' and 'token' is required.
+      operationId: get_records
+      tags:
+        - job
+      parameters:
+        - in: query
+          name: token
+          required: false
+          description: unique identifier for jobs
+          example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+          schema:
+            $ref: '#/components/schemas/Token'
+        - in: query
+          name: id
+          required: false
+          description: unique identifier for job configurations
+          example: dab3e1bf-f655-4e57-938d-d6953612552b
+          schema:
+            $ref: '#/components/schemas/ConfigId'
+        - in: query
+          name: success
+          required: false
+          description: filter output with respect to job success
+          schema:
+            type: boolean
+            example: false
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Record'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
   /user:
     post:
       summary: authenticate user
@@ -573,10 +762,9 @@ paths:
         '200':
           description: success
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                example: OK
+                $ref: '#/components/schemas/UserConfiguration'
         '400':
           $ref: '#/components/responses/400BadRequest'
         '401':
@@ -674,7 +862,18 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/UserConfiguration'
+                allOf:
+                  - $ref: '#/components/schemas/ConfigurationMetadataCreated'
+                  - $ref: '#/components/schemas/ConfigurationMetadataModified'
+                  - $ref: '#/components/schemas/UserConfiguration'
+                  - type: object
+                    properties:
+                      id:
+                        type: string
+                        description: user identifier
+                        example: adbe3793-1b77-4ee1-ad64-447be529b21c
+                    required:
+                      - id
         '400':
           $ref: '#/components/responses/400BadRequest'
         '422':
@@ -693,24 +892,25 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserConfiguration'
+              allOf:
+                - $ref: '#/components/schemas/ConfigurationMetadataCreated'
+                - $ref: '#/components/schemas/UserConfiguration'
       responses:
         '200':
           description: success
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
-                example: OK
+                type: object
+                properties:
+                  id:
+                    $ref: '#/components/schemas/ConfigId'
+                required:
+                  - id
         '400':
           $ref: '#/components/responses/400BadRequest'
         '409':
-          description: conflicting data
-          content:
-            text/plain:
-              schema:
-                type: string
-                example: "Resource does already exist."
+          $ref: '#/components/responses/409Conflict'
     put:
       summary: update existing user config
       description: Updates existing user configuration.
@@ -723,7 +923,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/UserConfiguration'
+              allOf:
+                - $ref: '#/components/schemas/ConfigurationMetadataModified'
+                - $ref: '#/components/schemas/UserConfiguration'
+                - type: object
+                  properties:
+                    id:
+                      type: string
+                      description: user identifier
+                      example: adbe3793-1b77-4ee1-ad64-447be529b21c
+                  required:
+                    - id
       responses:
         '200':
           description: success
@@ -757,20 +967,521 @@ paths:
           $ref: '#/components/responses/400BadRequest'
         '422':
           $ref: '#/components/responses/422SemanticProblem'
+  /workspace/configure:
+    get:
+      summary: get workspace configuration
+      description: Returns workspace configuration by id.
+      operationId: get_workspace
+      tags:
+        - config
+        - workspace
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ConfigurationMetadataCreated'
+                  - $ref: '#/components/schemas/ConfigurationMetadataModified'
+                  - $ref: '#/components/schemas/Workspace'
+                  - type: object
+                    properties:
+                      id:
+                        type: string
+                        description: workspace identifier
+                        example: 871d62ad-34bb-4a7e-8c45-780ab1918398
+                    required:
+                      - id
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+    post:
+      summary: create workspace configuration
+      description: |-
+        Creates new workspace configuration and returns its id.
+
+        If the field 'id' in the given Workspace is omitted, a
+        new id is generated instead.
+      operationId: create_workspace
+      tags:
+        - config
+        - workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ConfigurationMetadataCreated'
+                - $ref: '#/components/schemas/Workspace'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    $ref: '#/components/schemas/ConfigId'
+                required:
+                  - id
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '409':
+          $ref: '#/components/responses/409Conflict'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+    put:
+      summary: update workspace configuration
+      description: Updates existing workspace configuration-data.
+      operationId: update_workspace
+      tags:
+        - config
+        - workspace
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ConfigurationMetadataModified'
+                - $ref: '#/components/schemas/Workspace'
+                - type: object
+                  properties:
+                    id:
+                      type: string
+                      description: workspace identifier
+                      example: 871d62ad-34bb-4a7e-8c45-780ab1918398
+                  required:
+                    - id
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+    options:
+      summary: list workspaces
+      description: Returns an array of workspace ids.
+      operationId: list_workspaces
+      tags:
+        - config
+        - workspace
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConfigId'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+    delete:
+      summary: delete workspace
+      description: Deletes workspace configuration by id.
+      operationId: delete_workspace
+      tags:
+        - config
+        - workspace
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Deleted config 'dab3e1bf-f655-4e57-938d-d6953612552b'."
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+  /template/configure:
+    get:
+      summary: get template configuration
+      description: Returns template configuration by id.
+      operationId: get_template
+      tags:
+        - config
+        - template
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/ConfigurationMetadataCreated'
+                  - $ref: '#/components/schemas/ConfigurationMetadataModified'
+                  - $ref: '#/components/schemas/Template'
+                  - type: object
+                    properties:
+                      id:
+                        type: string
+                        description: template identifier
+                        example: 26046769-6f0f-4dc4-8725-0cfaa74b9c00
+                    required:
+                      - id
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+    post:
+      summary: create template configuration
+      description: |-
+        Creates new template configuration and returns its id.
+
+        If the field 'id' in the given Template is omitted, a
+        new id is generated instead.
+      operationId: create_template
+      tags:
+        - config
+        - template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ConfigurationMetadataCreated'
+                - $ref: '#/components/schemas/Template'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    $ref: '#/components/schemas/ConfigId'
+                required:
+                  - id
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '409':
+          $ref: '#/components/responses/409Conflict'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+    put:
+      summary: update template configuration
+      description: Updates existing template configuration-data.
+      operationId: update_template
+      tags:
+        - config
+        - template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/ConfigurationMetadataModified'
+                - $ref: '#/components/schemas/Template'
+                - type: object
+                  properties:
+                    id:
+                      type: string
+                      description: template identifier
+                      example: 26046769-6f0f-4dc4-8725-0cfaa74b9c00
+                  required:
+                    - id
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+    options:
+      summary: list templates
+      description: Returns an array of template ids.
+      operationId: list_templates
+      tags:
+        - config
+        - template
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ConfigId'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+    delete:
+      summary: delete template
+      description: Deletes template configuration by id.
+      operationId: delete_template
+      tags:
+        - config
+        - template
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "Deleted config 'dab3e1bf-f655-4e57-938d-d6953612552b'."
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+  /template/hotfolder-sources:
+    get:
+      summary: get hotfolder import sources
+      description:
+        Returns an array of configured import sources available to use
+        in a template with 'hotfolder' type.
+      operationId: get_hotfolder_sources
+      tags:
+        - config
+        - template
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: array
+                description: array of import source objects
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      description: import source identifier
+                      example: id0
+                    name:
+                      type: string
+                      description: display-name for the import source
+                      example: Import Source 1
+                    path:
+                      type: string
+                      description: |-
+                        path to import source directory
+
+                        relative to the fs_mount_point of the Import
+                        Module-service
+                      example: path/to/directory
+                    description:
+                      type: string
+                      description: description of the import source
+                      example: Some description
+                  required:
+                    - id
+                    - name
+                    - path
+        '400':
+          $ref: '#/components/responses/400BadRequest'
 components:
   schemas:
+    ConfigurationMetadataCreated:
+      title: ConfigurationMetadataCreated
+      description: configuration creation-metadata
+      type: object
+      properties:
+        userCreated:
+          type: string
+          description: user identifier
+          example: adbe3793-1b77-4ee1-ad64-447be529b21c
+        datetimeCreated:
+          $ref: '#/components/schemas/ISODateTime'
+    ConfigurationMetadataModified:
+      title: ConfigurationMetadataModified
+      description: configuration modification-metadata
+      type: object
+      properties:
+        userModified:
+          type: string
+          description: user identifier
+          example: adbe3793-1b77-4ee1-ad64-447be529b21c
+        datetimeModified:
+          $ref: '#/components/schemas/ISODateTime'
+    Template:
+      title: Template
+      description: template configuration
+      type: object
+      properties:
+        id:
+          type: string
+          description: template identifier
+          example: 26046769-6f0f-4dc4-8725-0cfaa74b9c00
+        status:
+          type: string
+          description: template status
+          enum:
+            - draft
+            - ok
+          example: ok
+        workspaceId:
+          type: string
+          description: workspace identifier
+          example: 871d62ad-34bb-4a7e-8c45-780ab1918398
+        name:
+          type: string
+          description: template display-name
+          example: Template 1
+        description:
+          type: string
+          description: template description
+          example: This is a template description.
+        type:
+          type: string
+          description: connection type for this template
+          enum:
+              - oai
+              - hotfolder
+              - plugin
+          example: oai
+        additionalInformation:
+          oneOf:
+            - type: object
+              title: PluginTemplateInfo
+              description: custom plugin-import information
+              properties:
+                plugin:
+                  type: string
+                  description: plugin identifier
+                  example: oai_pmh
+                args:
+                  type: object
+                  example:
+                    base_url: "https://www.lzv.nrw/oai"
+                    metadata_prefix: oai_dc
+                    transfer_url_info:
+                      regex: "(https://lzv\\.nrw/oai/transfer=[a-z0-9]+)"
+            - type: object
+              title: OAITemplateInfo
+              description: oai-based import information
+              properties:
+                url:
+                  type: string
+                  description: oai-server base url
+                  example: https://www.lzv.nrw/oai
+                metadataPrefix:
+                  type: string
+                  description: metadata prefix
+                  example: oai_dc
+                transferUrlFilters:
+                  type: array
+                  description:
+                    array of filters to extract transfer urls from metadata
+                  items:
+                    type: object
+                    description: transfer url filter
+                    properties:
+                      regex:
+                        type: string
+                        description:
+                          regular expression that is applied to metadata
+                        example: "(https://lzv\\.nrw/oai/transfer=[a-z0-9]+)"
+                      path:
+                        type: string
+                        description:
+                          XML XPath-query to limit the regex-matching to
+                        example: "./GetRecord/record/metadata/oai_dc:dc/dc:identifier"
+                    required:
+                      - regex
+            - type: object
+              title: HotfolderTemplateInfo
+              description: hotfolder-import information
+              properties:
+                sourceId:
+                  type: string
+                  description: id of the associated hotfolder import-source
+                  example: 05d806ad-aba1-4208-ae18-ff0914ce128d
+      required:
+        - status
+    Workspace:
+      title: Workspace
+      description: workspace configuration
+      properties:
+        id:
+          type: string
+          description: workspace identifier
+          example: 871d62ad-34bb-4a7e-8c45-780ab1918398
+        name:
+          type: string
+          description: workspace display-name
+          example: Workspace 1
+        users:
+          type: array
+          description: array of user-ids associated with this workspace
+          items:
+            type: string
+            description: user-id
+          example:
+            - user01
+            - user02
+        templates:
+          type: array
+          description: array of template-ids associated with this workspace
+          items:
+            type: string
+            description: template-id
+          example:
+            - template01
+            - template02
+      required:
+        - name
     UserConfiguration:
       title: UserConfiguration
       description: user configuration
       properties:
-        userId:
+        id:
           type: string
           description: user identifier
-          example: user0
+          example: adbe3793-1b77-4ee1-ad64-447be529b21c
         externalId:
           type: string
-          description: external user identifier
+          description: external user name
           example: userA
+        status:
+          type: string
+          description: user account status identifier
+          enum:
+            - inactive
+            - ok
+          example: ok
+        username:
+          type: string
+          description: user name
+          example: user0
         firstname:
           type: string
           description: user first name
@@ -784,21 +1495,45 @@ components:
           description: user email address
           format: email
           example: pete@lzv.nrw
-        roles:
+        groups:
           type: array
+          description: list of group memberships
           items:
-            description: user role
-            type: string
+            description: group membership per workspace
+            properties:
+              id:
+                type: string
+                description: group identifier
+                example: admin
+              workspace:
+                type: string
+                description: workspace identifier
+                example: workspace01
+            required:
+              - name
+            example:
+              - id: admin
+              - id: curator
+                workspace: workspace01
+        widgetConfig:
+          type: object
+          description: user-widget configuration
+          additionalProperties: true
           example:
-            - admin
-            - curator
+            widget0:
+              id: events
+              x: 0
+              y: 0
+              props:
+                template: 2d6500d3-97a2-411c-8312-1879c7830f46
       required:
-        - userId
+        - username
+        - email
     UserCredentials:
       title: UserCredentials
       description: user credentials
       properties:
-        userId:
+        username:
           type: string
           description: user identifier
           example: user0
@@ -808,23 +1543,186 @@ components:
           format: password
           example: password
       required:
-        - userId
+        - username
         - password
-    MetadataRecord:
-      title: MetadataRecord
-      description: job execution-related metadata record info
-      properties:
-        by:
-          type: string
-          description: host name on which this record has been generated
-          example: https://www.lzv.nrw/job_processor
-        datetime:
-          $ref: '#/components/schemas/ISODateTimeMicro'
     JobConfiguration:
       title: JobConfiguration
       description: job configuration
       type: object
       properties:
+        id:
+          type: string
+          description: job configuration identifier
+          example: 26046769-6f0f-4dc4-8725-0cfaa74b9c00
+        status:
+          description: status of the job configuration
+          type: string
+          enum:
+              - draft
+              - ok
+          example: draft
+        templateId:
+          type: string
+          description: template identifier
+          example: 871d62ad-34bb-4a7e-8c45-780ab1918398
+        name:
+          type: string
+          description: configuration name
+          example: OAI-Job
+        description:
+          type: string
+          description: configuration description
+          example: daily OAI-harvest
+        contactInfo:
+          type: string
+          description: contact information
+          example: "data-curator@lzv.nrw"
+        dataSelection:
+          type: object
+          description: import details
+          oneOf:
+            - title: OAISelectionDetails
+              type: object
+              description: OAI-PMH selective harvesting details
+              properties:
+                identifiers:
+                  type: array
+                  description:
+                    list of explicit identifiers
+
+                    this option takes precedence over the selection
+                    harvesting options
+                  items:
+                    type: string
+                    description: oai-identifier
+                    example: "oai:lzv.nrw:46ddd9fc-2b0c-4c3b-a490-0ed4087238fc"
+                  example:
+                    - "oai:lzv.nrw:46ddd9fc-2b0c-4c3b-a490-0ed4087238fc"
+                    - "oai:lzv.nrw:96365c49-2ff4-447a-a9b8-419d54b53d1f"
+                sets:
+                  type: array
+                  description: list of sets for selective harvest
+                  items:
+                    type: string
+                    description: oai-set
+                    example: set0
+                  example:
+                    - set0
+                    - set1
+                from:
+                  type: string
+                  description:
+                    lower bound for record date during selective harvest
+                  pattern: /[0-9]{4}-[0-9]{2}-[0-9]{2}/
+                  example: "2023-08-04"
+                until:
+                  type: string
+                  description:
+                    upper bound for record date during selective harvest
+                  pattern: /[0-9]{4}-[0-9]{2}-[0-9]{2}/
+                  example: "2023-08-04"
+            - title: HotfolderSelectionDetails
+              type: object
+              description: hotfolder import details
+              properties:
+                path:
+                  type: string
+                  description:
+                    subdirectory relative to the hotfolder import source
+                    that is referenced in the associated template
+                  example: repo0/part0
+        dataProcessing:
+          type: object
+          description: processing details
+          properties:
+            mapping:
+              type: object
+              description:
+                metadata mapping; this object should contain only one
+                of its defined properties
+              properties:
+                type:
+                  type: string
+                  description: mapping type identifier
+                  enum:
+                    - xslt
+                    - python
+                    - plugin
+                  example: python
+                data:
+                  # the intended 'oneOf' is broken in the sdk-generator
+                  # use 'allOf' as a workaround and rely on app to handle
+                  # discrimination (based on 'type')
+                  allOf:
+                    - title: FileMappingData
+                      type: object
+                      description:
+                        processing via user mapping-script (type 'python'
+                        or 'xslt')
+                      properties:
+                        contents:
+                          type: string
+                          description: mapping-script file contents
+                          example: "<file contents>"
+                        name:
+                          type: string
+                          description: mapping-script file name
+                          example: "my-script.py"
+                        datetimeUploaded:
+                          type: string
+                          description: mapping-script upload datetime
+                          example: "2024-01-01T00:00:00+01:00"
+                    - title: PluginMappingData
+                      type: object
+                      description:
+                        processing via existing mapping-plugin
+                        (type 'plugin')
+                      properties:
+                        plugin:
+                          type: string
+                          description: plugin identifier
+                          example: demo
+                        args:
+                          type: object
+                          description: plugin arguments
+                          additionalProperties: true
+                          example: {}
+              required:
+                - type
+                - data
+            preparation:
+              type: object
+              description:
+                preparation for SIP-building; see DCM Preparation Module
+                API for more information
+              properties:
+                rightsOperations:
+                  type: array
+                  description:
+                    metadata-operations to perform on mapped rights-related metadata
+                  items:
+                    type: object
+                    additionalProperties: true
+                  example: []
+                sigPropOperations:
+                  type: array
+                  description: |-
+                    metadata-operations to perform on significant properties/
+                    PREMIS metadata
+
+                    See IP-specification for details.
+                  items:
+                    type: object
+                    additionalProperties: true
+                  example: []
+                preservationOperations:
+                  type: array
+                  description:
+                    metadata-operations to perform on mapped preservation-related metadata
+                  items:
+                    type: object
+                    additionalProperties: true
+                  example: []
         schedule:
           description: scheduling-related settings
           type: object
@@ -846,18 +1744,9 @@ components:
                   description: execution cadence unit
                   type: string
                   enum:
-                    - second
-                    - minute
-                    - hour
                     - day
                     - week
-                    - monday
-                    - tuesday
-                    - wednesday
-                    - thursday
-                    - friday
-                    - saturday
-                    - sunday
+                    - month
                   example: day
                 interval:
                   description: execution cadence unit value
@@ -869,38 +1758,9 @@ components:
                 - interval
           required:
             - active
-        id:
-          $ref: '#/components/schemas/ConfigId'
-        name:
-          description: user-defined configuration name
-          type: string
-          example: daily OAI-harvest
-        last_modified:
-          $ref: '#/components/schemas/ISODateTime'
-        job:
-          description: |-
-            job-related configuration details
-
-            This is forwarded to the Job Processor as the 'process'-object.
-
-            See Job Processor API for more information.
-          type: object
-          additionalProperties: true
-          example:
-            from: import_ies
-            args:
-              import_ies:
-                plugin: oai
-                args:
-                  metadata_prefix: oai_dc
       required:
-        - job
-    ArchiveIdentifier:
-      title: ArchiveIdentifier
-      description: identifier of an archive system
-      type: string
-      enum:
-        - rosetta
+        - status
+        - templateId
     Status:
       title: ContainerStatus
       description:
@@ -922,9 +1782,9 @@ components:
       example: "2024-01-01T00:00:00+01:00"
     ISODateTimeMicro:
       title: ISODateTimeMicro
-      description: ISO-8601 datetime-stamp with microseconds
+      description: ISO-8601 datetime-stamp with optional microseconds
       type: string
-      pattern: /[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{6}[+-][0-9]{2}:[0-9]{2}/
+      pattern: /[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]{6})?[+-][0-9]{2}:[0-9]{2}/
       example: "2024-01-01T00:00:00.000000+01:00"
     ConfigId: # see also components/parameters/ConfigId
       title: ConfigId
@@ -1000,27 +1860,106 @@ components:
           - datetime: "2024-01-01T00:00:02+01:00"
             origin: Backend
             body: Job exited normally.
-    Deposit:
-      title: Deposit
-      type: object
-      description: details about a deposit in the archive system
+    Record:
+      title: Record
+      description:
+        record generated in a job, e.g., an intellectual entity (IE)
       properties:
-        id:
+        reportId:
           type: string
-          description: ID of the Deposit activity
-          example: "123456"
-        status:
+          description:
+            identifier in the context of the report-object
+          example: oai:0478b6eb-6270-4a8b-bdc0-49e69a4e3e0d
+        success:
+          type: boolean
+          description:
+            whether a problem occurred while processing this record
+          example: true
+        originSystemId:
           type: string
-          description: status of the Deposit activity
-          example: INPROCESS
-        sip_reason:
+          description:
+            identifier of the origin system
+          example: oai:origin
+        externalId:
           type: string
-          description: if applicable, reason SIP was rejected or declined
-          nullable: true
-          example: Files Rejected
+          description:
+            identifier of the record in the external system
+          example: b29bb376-3e2c-4a1e-af90-96c094daf5c3
+        sipId:
+          type: string
+          description:
+            SIP (Submission Information Package) identifier assigned by
+            the archive system
+          example: 86eab680-d4c4-4402-93b3-24a3cc7b9432
+        ieId:
+          type: string
+          description:
+            IE (Intellectual Entity) identifier assigned by the archive
+            system
+          example: ie0
+        datetimeProcessed:
+          $ref: '#/components/schemas/ISODateTime'
+        token:
+          $ref: '#/components/schemas/Token'
       required:
-        - id
-        - status
+        - success
+        - reportId
+    RosettaTarget:
+      type: object
+      title: RosettaTarget
+      description: rosetta-related request target
+      properties:
+        subdirectory:
+          description:
+            name of the SIP-directory to be ingested
+          type: string
+          example: 2468edf8-6706-4ff0-bd03-04512d082c28
+      required:
+        - subdirectory
+    RosettaRESTResult:
+      allOf:
+        - $ref: '#/components/schemas/JobDataDetails'
+        - type: object
+          properties:
+            deposit:
+              type: object
+              description:
+                deposit object, see Rosetta REST API documentation
+              additionalProperties: true
+              example:
+                id: "123456"
+                status: INPROCESS
+                sip_reason: Files rejected
+            sip:
+              type: object
+              description:
+                deposit object, see Rosetta REST API documentation
+              additionalProperties: true
+              example:
+                id: "123456"
+                status: INPROCESS
+                iePids: "0,1,2"
+    JobDataDetails:
+      title: JobDataDetails
+      type: object
+      description: |-
+        response data depending on type of archive (archiveApi)
+
+        ### 'rosetta-rest-api-v0':
+        See 'RosettaRESTResult'-schema
+      properties:
+        archiveApi:
+          title: archiveApi
+          description: identifier for an archive system API
+          type: string
+          enum:
+            - rosetta-rest-api-v0
+      discriminator:
+        propertyName: archiveApi
+        mapping:
+          'rosetta-rest-api-v0': '#/components/schemas/RosettaRESTResult'
+      required:
+        - archiveApi
     JobData:
       title: JobData
       description: |-
@@ -1030,10 +1969,9 @@ components:
         success:
           type: boolean
           description: overall success of the job
-        deposit:
-          $ref: '#/components/schemas/Deposit'
-      example:
-        success: false
+          example: false
+        details:
+          $ref: '#/components/schemas/JobDataDetails'
     Report:
       title: Report
       description: |-
@@ -1093,9 +2031,9 @@ components:
           expires_at: "2024-01-01T00:00:00+01:00"
         args:
           ingest:
-            subdir: 2468edf8-6706-4ff0-bd03-04512d082c28
-            producer: "12345678"
-            material_flow: "12345678"
+            archiveId: dab3e1bf-f655-4e57-938d-d6953612552b
+            target:
+              subdirectory: 2468edf8-6706-4ff0-bd03-04512d082c28
         progress:
           status: completed
           verbose: Job terminated normally.
@@ -1321,16 +2259,73 @@ components:
                   description:
                     database-related settings
                   properties:
-                    jobConfiguration:
-                      $ref: '#/components/schemas/DBAdapter'
-                    report:
-                      $ref: '#/components/schemas/DBAdapter'
-                    userConfiguration:
-                      $ref: '#/components/schemas/DBAdapter'
+                    adapter:
+                      type: string
+                      description: database adapter name
+                      example: postgres
+                    schemaVersion:
+                      type: string
+                      description: dcm-database schema version string
+                      example: "1.0.0"
+                    settings:
+                      type: object
+                      description: database-related settings
+                      properties:
+                        poolSize:
+                          type: number
+                          description: size of database connection-pool
+                          example: 10
+                        poolOverflow:
+                          type: boolean
+                          description:
+                            whether to allow the pool to overflow during
+                            high load (dynamically allocates more connections
+                            when needed)
+                          example: true
+                        connectionTimeout:
+                          type: number
+                          nullable: true
+                          description:
+                            duration after which a database connection-
+                            attempt times out; a value of null corresponds
+                            to no timeout
+                          example: 10.0
+                        file:
+                          type: string
+                          nullable: true
+                          description:
+                            file path for a SQLite database (relative to
+                            working directory); null corresponds to an
+                            in-memory database
+                          example: sqlite.db
+                        host:
+                          type: string
+                          description: PostgreSQL host name
+                          example: database
+                        name:
+                          type: string
+                          description: PostgreSQL database name
+                          example: dcm-database
+                        user:
+                          type: string
+                          description: PostgreSQL user name
+                          example: dcm
+                        port:
+                          type: string
+                          description: PostgreSQL port
+                          example: 5432
+                        password:
+                          type: boolean
+                          description: whether PostgreSQL password is set
+                          example: true
+                        passfile:
+                          type: string
+                          description: PostgreSQL passfile path
+                          example: pass
                   required:
-                    - jobConfiguration
-                    - report
-                    - userConfiguration
+                    - adapter
+                    - schemaVersion
+                    - settings
                 scheduling:
                   type: object
                   description: scheduling-related settings
@@ -1345,15 +2340,20 @@ components:
                       description:
                         whether the scheduling-loop is running at startup
                       example: true
-                    interval:
-                      type: number
+                    timezone:
+                      type: string
+                      nullable: true
                       description:
-                        interval of scheduling-iterations in seconds
-                      example: 1
+                        identifier of the native timezone for the scheduler;
+                        if null, uses system default
+
+                        See python3's `zoneinfo.available_timezones()` for
+                        a list of supported options.
+                      example: Europe/Berlin
                   required:
                     - controls_api
                     - at_startup
-                    - interval
+                    - timezone
                 job:
                   type: object
                   description: job-execution related settings
@@ -1399,7 +2399,7 @@ components:
                       required:
                         - url
                     archive_identifier:
-                      $ref: '#/components/schemas/ArchiveIdentifier'
+                      type: string
                     archive_settings:
                       oneOf:
                         - allOf:
@@ -1531,6 +2531,13 @@ components:
           schema:
             type: string
             example: "Resource not found. Target does not exist."
+    409Conflict:
+      description: conflicting data
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Resource does already exist."
     422SemanticProblem:
       description: semantic problem
       content:
@@ -1538,6 +2545,13 @@ components:
           schema:
             type: string
             example: "Argument <X> has the wrong type"
+    500ServerError:
+      description: unknown server-error
+      content:
+        text/plain:
+          schema:
+            type: string
+            example: "Unknown problem occurred during submission"
     502BadGateway:
       description: bad gateway
       content:

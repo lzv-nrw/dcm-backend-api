@@ -1,0 +1,11 @@
+from .broken_template_additional_info_one_of_schema import broken_template_additional_info_one_of_schema, ambiguous_template_additional_info_schema
+from .broken_job_config_data_selection_one_of_schema import broken_job_config_data_selection_one_of_schema, ambiguous_job_config_data_selection_schema
+from .broken_job_data_details_discriminator import broken_job_data_details_discriminator
+
+
+def patch(sdk):
+    broken_template_additional_info_one_of_schema(sdk)
+    ambiguous_template_additional_info_schema(sdk)
+    broken_job_config_data_selection_one_of_schema(sdk)
+    ambiguous_job_config_data_selection_schema(sdk)
+    broken_job_data_details_discriminator(sdk)
