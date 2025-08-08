@@ -4,7 +4,7 @@ info:
   description: |-
     This is the OpenAPI 3.0 specification describing the containers used
     for the backend in the context of the dcm in the lzvnrw-project.
-  version: 2.0.0
+  version: 2.3.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -373,6 +373,14 @@ paths:
       tags:
         - config
         - job
+      parameters:
+        - in: query
+          name: templateId
+          required: false
+          description: template identifier
+          schema:
+            type: string
+            example: 871d62ad-34bb-4a7e-8c45-780ab1918398
       responses:
         '200':
           description: success
@@ -832,6 +840,15 @@ paths:
       tags:
         - user
         - config
+      parameters:
+        - in: query
+          name: group
+          required: false
+          description: |-
+            comma-separated list of group identifiers
+          schema:
+            type: string
+            example: admin
       responses:
         '200':
           description: success
@@ -895,6 +912,20 @@ paths:
               allOf:
                 - $ref: '#/components/schemas/ConfigurationMetadataCreated'
                 - $ref: '#/components/schemas/UserConfiguration'
+                - type: object
+                  properties:
+                    username:
+                      type: string
+                      description: user name
+                      example: user0
+                    email:
+                      type: string
+                      description: user email address
+                      format: email
+                      example: pete@lzv.nrw
+                  required:
+                    - username
+                    - email
       responses:
         '200':
           description: success
@@ -1477,6 +1508,7 @@ components:
           enum:
             - inactive
             - ok
+            - deleted
           example: ok
         username:
           type: string
@@ -1526,9 +1558,6 @@ components:
               y: 0
               props:
                 template: 2d6500d3-97a2-411c-8312-1879c7830f46
-      required:
-        - username
-        - email
     UserCredentials:
       title: UserCredentials
       description: user credentials

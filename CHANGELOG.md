@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.3.0] - 2025-08-08
+
+### Changed
+
+- changed `UserConfiguration.username` and `UserConfiguration.email` to optional (in requests to `PUT-/user/configure`)
+
+### Added
+
+- added optional query argument `templateId` to `OPTIONS-/job/configure`
+- added optional query argument `group`(-identifier) to `OPTIONS-/user/configure`
+- added status `"deleted"` to `UserConfiguration.status`-enum
+
 ## [2.0.0] - 2025-07-25
 
 ### Changed
