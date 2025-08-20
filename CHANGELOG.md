@@ -1,5 +1,12 @@
 # Changelog
 
+## [2.5.0] - 2025-08-20
+
+### Added
+
+- added optional submission token to job-API
+- added optional submission token to ingest-API
+
 ## [2.3.0] - 2025-08-08
 
 ### Changed

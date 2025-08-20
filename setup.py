@@ -2,7 +2,7 @@ import os
 from setuptools import setup
 
 setup(
-    version="2.3.0",
+    version="2.5.0",
     name="dcm-backend-api",
     description="specification of the DCM Backend API",
     author="LZV.nrw",
