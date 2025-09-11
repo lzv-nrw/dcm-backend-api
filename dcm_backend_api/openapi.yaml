@@ -4,7 +4,7 @@ info:
   description: |-
     This is the OpenAPI 3.0 specification describing the containers used
     for the backend in the context of the dcm in the lzvnrw-project.
-  version: 3.0.0
+  version: 3.1.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -930,8 +930,24 @@ paths:
                 properties:
                   id:
                     $ref: '#/components/schemas/ConfigId'
+                  requiresActivation:
+                    type: boolean
+                    description:
+                      whether a new user is required to activate the account
+                    example: true
+                  secret:
+                    type: string
+                    description: |-
+                      secret for user-activation (one-time password that can
+                      only be used to set initial password)
+
+                      If user-activation is disabled (discouraged), the given
+                      secret can be used to login immediately.
+                    example: 5533955b-48f9-46dd-97b4-c2f83e38e1a1
                 required:
                   - id
+                  - requiresActivation
+                  - secret
         '400':
           $ref: '#/components/responses/400BadRequest'
         '409':
@@ -992,6 +1008,44 @@ paths:
           $ref: '#/components/responses/400BadRequest'
         '422':
           $ref: '#/components/responses/422SemanticProblem'
+  /user/configure/secrets:
+    delete:
+      summary: revoke user secret and activation
+      description: Revokes user password and activation status.
+      operationId: revoke_user_secrets
+      tags:
+        - config
+      parameters:
+        - $ref: '#/components/parameters/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  requiresActivation:
+                    type: boolean
+                    description:
+                      whether a new user is required to activate the account
+                    example: true
+                  secret:
+                    type: string
+                    description: |-
+                      secret for user-activation (one-time password that can
+                      only be used to set initial password)
+
+                      If user-activation is disabled (discouraged), the given
+                      secret can be used to login immediately.
+                    example: 5533955b-48f9-46dd-97b4-c2f83e38e1a1
+                required:
+                  - requiresActivation
+                  - secret
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
   /workspace/configure:
     get:
       summary: get workspace configuration
@@ -2428,12 +2482,6 @@ components:
                       description:
                         whether new accounts need activation before use
                       example: true
-                    activation_url_fmt:
-                      type: string
-                      description:
-                        python format-string used to generate user
-                        activation url
-                      example: "https://lzv.nrw/user-activation?pass={password}"
                   required:
                     - user_activation
               required:

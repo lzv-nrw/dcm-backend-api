@@ -1,5 +1,19 @@
 # Changelog
 
+## [3.1.0] - 2025-09-11
+
+### Changed
+
+- added secret to response body when posting a new user-configuration
+
+### Added
+
+- added endpoint for revoking a user's activation status
+
+### Removed
+
+- removed user-activation url format string from `SelfDescription`-schema
+
 ## [3.0.0] - 2025-09-09
 
 ### Changed
