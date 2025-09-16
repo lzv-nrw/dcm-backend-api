@@ -4,7 +4,7 @@ info:
   description: |-
     This is the OpenAPI 3.0 specification describing the containers used
     for the backend in the context of the dcm in the lzvnrw-project.
-  version: 3.1.0
+  version: 3.3.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -1340,12 +1340,145 @@ paths:
           $ref: '#/components/responses/400BadRequest'
         '422':
           $ref: '#/components/responses/422SemanticProblem'
+  /template/hotfolder:
+    options:
+      summary: get list of hotfolders
+      description:
+        Returns an array of available hotfolders.
+      operationId: list_hotfolders
+      tags:
+        - config
+        - template
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: array
+                description: array of hotfolders
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                      description: hotfolder identifier
+                      example: hotfolder-0
+                    name:
+                      type: string
+                      description: display-name for the hotfolder
+                      example: Source 1
+                    description:
+                      type: string
+                      description: description of the hotfolder
+                      example: Some description
+                  required:
+                    - id
+                    - name
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+  /template/hotfolder/directory:
+    options:
+      summary: get list of directories for hotfolder
+      description:
+        Returns an array of available directories in the given hotfolder.
+      operationId: list_hotfolder_directories
+      tags:
+        - template
+      parameters:
+        - $ref: '#/components/parameters/OptionalConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                type: array
+                description: array of directory names
+                items:
+                  type: object
+                  description: directory info
+                  properties:
+                    name:
+                      type: string
+                      description: directory name
+                    inUse:
+                      type: boolean
+                      description:
+                        whether the directory is already linked to a job
+                        configuration
+                    linkedJobConfigs:
+                      type: array
+                      description: array of job configuration identifiers
+                      items:
+                        type: string
+                        description: job configuration identifier
+                        example: dab3e1bf-f655-4e57-938d-d6953612552b
+                  required:
+                    - name
+                example:
+                  - name: job-0
+                    inUse: false
+                  - name: job-1
+                    inUse: true
+                    linkedJobConfigs:
+                      - dab3e1bf-f655-4e57-938d-d6953612552b
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+    post:
+      summary: create directory in a hotfolder
+      description:
+        Creates a new directory inside of a hotfolder.
+      operationId: create_hotfolder_directory
+      tags:
+        - template
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id:
+                  type: string
+                  description: hotfolder identifier
+                  example: hotfolder-0
+                name:
+                  type: string
+                  description:
+                    name of the new directory
+
+                    Note that subdirectories are not allowed.
+                  example: job-0
+              required:
+                - id
+                - name
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: OK
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '409':
+          $ref: '#/components/responses/409Conflict'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
   /template/hotfolder-sources:
     get:
-      summary: get hotfolder import sources
+      summary: (DEPRECATED) get hotfolder import sources
       description:
-        Returns an array of configured import sources available to use
-        in a template with 'hotfolder' type.
+        (DEPRECATED) Returns an array of configured import sources available
+        to use in a template with 'hotfolder' type.
       operationId: get_hotfolder_sources
       tags:
         - config

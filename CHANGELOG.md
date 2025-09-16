@@ -1,5 +1,15 @@
 # Changelog
 
+## [3.3.0] - 2025-09-16
+
+### Added
+
+- added new endpoints (read hotfolders/directories and create directory) for hotfolders to the template-API
+
+### Removed
+
+- deprecated `GET-/template/hotfolder-sources`
+
 ## [3.1.0] - 2025-09-11
 
 ### Changed
