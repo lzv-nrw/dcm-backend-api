@@ -1,5 +1,16 @@
 # Changelog
 
+## [4.0.0] - 2025-10-01
+
+### Added
+
+- added `targetArchive`-object to `Template`-schema
+- added endpoint `OPTIONS-/template/archive` to get information on available target-archives
+
+### Removed
+
+- **Breaking:** removed obsolete ingest-related section of `SelfDescription`-schema (archive configuration)
+
 ## [3.3.0] - 2025-09-16
 
 ### Added
