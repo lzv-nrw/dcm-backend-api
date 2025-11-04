@@ -4,7 +4,7 @@ info:
   description: |-
     This is the OpenAPI 3.0 specification describing the containers used
     for the backend in the context of the dcm in the lzvnrw-project.
-  version: 4.0.0
+  version: 5.0.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -13,6 +13,8 @@ externalDocs:
 tags:
   - name: ingest
     description: ingest-related endpoints
+  - name: artifact
+    description: artifact download-related endpoints
   - name: config
     description: configuration-related endpoints
   - name: job
@@ -242,6 +244,199 @@ paths:
           $ref: '#/components/responses/400BadRequest'
         '502':
           $ref: '#/components/responses/502BadGateway'
+  /artifact:
+    get:
+      summary: download artifact-bundle
+      description:
+        Returns a previously built bundle of artifacts.
+      operationId: download_bundle
+      tags:
+        - artifact
+      parameters:
+        - in: query
+          name: id
+          required: true
+          description: artifact-bundle identifier
+          example: dab3e1bf-f655-4e57-938d-d6953612552b
+          schema:
+            type: string
+        - in: query
+          name: downloadName
+          required: false
+          description:
+            user-suggested download name (is added to response header)
+          example: ie-abcde.zip
+          schema:
+            type: string
+      responses:
+        '200':
+          description: bundle of artifacts as an archive-file
+          content:
+            application/octet-stream: {}
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+    post:
+      summary: trigger build of an artifact-bundle
+      description:
+        Triggers a build of a bundle from requested job-artifacts.
+        If the request is accepted, a 201-response is triggered
+        containing a JobToken.
+      operationId: bundle
+      tags:
+        - artifact
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bundle:
+                  type: object
+                  properties:
+                    targets:
+                      type: array
+                      description: target artifacts for building archive-file
+                      items:
+                        type: object
+                        description: reference to artifact
+                        properties:
+                          path:
+                            type: string
+                            description:
+                              relative path to artifact within the shared
+                              filesystem
+                            example:
+                              ie/abcde-12345-fghijk-67890
+                          asPath:
+                            type: string
+                            description:
+                              relative path in archive-file (default uses
+                              the source 'path')
+                            example:
+                              ie0
+                        required:
+                          - path
+                  required:
+                    - targets
+                token:
+                  type: string
+                  description:
+                    idempotency identifier; if submitted previously, returns
+                    the associated job token; otherwise uses this value as
+                    new token's value
+                  example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+                callbackUrl:
+                  $ref: '#/components/schemas/CallbackUrl'
+              required:
+                - bundle
+      callbacks:
+        termination:
+          $ref: '#/components/callbacks/termination'
+      responses:
+        '201':
+          $ref: '#/components/responses/201AcceptedSubmission'
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+        '503':
+          $ref: '#/components/responses/503Busy'
+    delete:
+      summary: abort job
+      description:
+        Aborts the execution of a job (if already running) or removes it
+        from queue (otherwise). This operation is performed
+        synchronously.
+      operationId: abort_bundling
+      tags:
+        - artifact
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                origin:
+                  type: string
+                  description: verbose origin of request
+                  example: frontend
+                reason:
+                  type: string
+                  description: verbose reason for request
+                  example: user abort
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example:
+                  "successfully aborted '37ee72d6-80ab-4dcd-a68d-f8d32766c80d'"
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '502':
+          $ref: '#/components/responses/502BadGateway'
+  /artifact/report:
+    get:
+      summary: get report
+      description: |-
+        Returns Report if the job associated with the given token exists.
+      operationId: get_bundling_report
+      tags:
+        - artifact
+      parameters:
+        - $ref: '#/components/parameters/Token'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Report'
+                  - type: object
+                    properties:
+                      data:
+                        type: object
+                        description: job output data
+                        properties:
+                          success:
+                            type: boolean
+                            description: overall success of the job
+                            example: false
+                          bundle:
+                            type: object
+                            description: information on generated bundle
+                            properties:
+                              id:
+                                type: string
+                                description: bundle id
+                                example: 5aa51111-f88f-4fd5-b03b-212b4f9e8865
+                              size:
+                                type: number
+                                description: bundle size in MB
+                                example: 5.1
+                            required:
+                              - id
+                              - size
+                    example:
+                      data:
+                        success: false
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '503':
+          $ref: '#/components/responses/503Busy'
   /job/configure:
     get:
       summary: get job config
@@ -276,6 +471,11 @@ paths:
                         $ref: '#/components/schemas/Token'
                       scheduledExec:
                         $ref: '#/components/schemas/ISODateTime'
+                      IEs:
+                        type: integer
+                        description:
+                          number of IEs associated with this job configuration
+                        example: 1234
                     required:
                       - id
         '400':
@@ -505,12 +705,6 @@ paths:
                     type: string
                     description: workspace identifier
                     example: 871d62ad-34bb-4a7e-8c45-780ab1918398
-                  records:
-                    type: array
-                    description:
-                      list of completed records associated with this job
-                    items:
-                      $ref: '#/components/schemas/Record'
                 required:
                   - token
         '400':
@@ -707,48 +901,196 @@ paths:
           $ref: '#/components/responses/500ServerError'
         '502':
           $ref: '#/components/responses/502BadGateway'
-  /job/records:
+  /job/ies:
     get:
-      summary: get records
-      description: |-
-        Returns an array of job records. At least one of the (mutually
-        exclusive) query-filters 'id' and 'token' is required.
-      operationId: get_records
+      summary: get intellectual entities
+      description:
+        Returns an array of intellectual entities that are associated
+        with a given job configuration.
+      operationId: get_ies
       tags:
         - job
       parameters:
         - in: query
-          name: token
-          required: false
-          description: unique identifier for jobs
-          example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
-          schema:
-            $ref: '#/components/schemas/Token'
-        - in: query
-          name: id
-          required: false
+          name: jobConfigId
+          required: true
           description: unique identifier for job configurations
           example: dab3e1bf-f655-4e57-938d-d6953612552b
           schema:
             $ref: '#/components/schemas/ConfigId'
         - in: query
-          name: success
+          name: filterByStatus
           required: false
-          description: filter output with respect to job success
+          description: |-
+            filter output by status
+
+            (multiple filters are applied with an intersect-strategy)
           schema:
-            type: boolean
-            example: false
+            type: string
+            enum:
+              - complete
+              - inProcess
+              - validationError
+              - error
+              - ignored
+        - in: query
+          name: filterByText
+          required: false
+          description: |-
+            filter output by text (case insensitive)
+
+            (multiple filters are applied with an intersect-strategy)
+          schema:
+            type: string
+            description: search string
+        - in: query
+          name: sort
+          required: false
+          description: sort output
+          schema:
+            type: string
+            enum:
+              - datetimeChanged
+              - originSystemId
+              - externalId
+              - archiveIeId
+              - archiveSipId
+              - status
+        - in: query
+          name: range
+          required: false
+          description: |-
+            limit response to subset of IEs
+
+            (starting at 0; lower bound inclusive, upper bound exclusive)
+          schema:
+            type: string
+            pattern: /([0-9]+)\.\.([0-9]+)/
+            example: 100..150
+        - in: query
+          name: count
+          required: false
+          description:
+            whether to return a count of all IEs after applying filters
+          schema:
+            type: string
+            enum:
+              - "true"
+              - "false"
       responses:
         '200':
           description: success
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Record'
+                type: object
+                properties:
+                  IEs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/IE"
+                  count:
+                    type: number
+                    description: number of records after filters are applied
+                    example: 150
+                required:
+                  - IEs
         '400':
           $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+  /job/ie:
+    get:
+      summary: get intellectual entity
+      description:
+        Returns the requested intellectual entity.
+      operationId: get_ie
+      tags:
+        - job
+      parameters:
+        - in: query
+          name: id
+          required: true
+          description: unique identifier for an IE
+          example: 0aaacfbf-fca1-4644-b244-e36f4c2c6c0f
+          schema:
+            $ref: '#/components/schemas/ConfigId'
+      responses:
+        '200':
+          description: success
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IE"
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
+        '422':
+          $ref: '#/components/responses/422SemanticProblem'
+  /job/ie-plan:
+    post:
+      summary: set plan for resuming record processing
+      description:
+        Updates resume-plan for latest record of given IE
+      operationId: set_ie_plan
+      tags:
+        - job
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description:
+                only a single instruction is accepted, passing duplicate
+                options causes an error
+              properties:
+                id:
+                  type: string
+                  description: IE identifier
+                  example: 0aaacfbf-fca1-4644-b244-e36f4c2c6c0f
+                clear:
+                  type: boolean
+                  description:
+                    whether to reset latest IE-record to an 'in-process'
+                    status and clear all plan/ignore-state (this allows
+                    to simply try the IE/record again)
+                ignore:
+                  type: boolean
+                  description:
+                    whether to set the latest IE-record to an ignored
+                    state
+                  example: false
+                planAsBitstream:
+                  type: boolean
+                  description: |-
+                    whether to process the latest IE-record as bitstream
+
+                    (this also includes planToSkipObjectValidation)
+                  example: false
+                planToSkipObjectValidation:
+                  type: boolean
+                  description:
+                    whether to process the latest IE-record without
+                    object validation
+                  example: true
+              required:
+                - id
+      responses:
+        '200':
+          description: success
+          content:
+            text/plain:
+              schema:
+                type: string
+                example: "OK"
+        '400':
+          $ref: '#/components/responses/400BadRequest'
+        '404':
+          $ref: '#/components/responses/404NoTarget'
         '422':
           $ref: '#/components/responses/422SemanticProblem'
   /user:
@@ -1561,6 +1903,152 @@ paths:
           $ref: '#/components/responses/404NoTarget'
 components:
   schemas:
+    Record:
+      title: Record
+      type: object
+      properties:
+        id:
+          type: string
+          description: record identifier
+          example: f6488a74-2ceb-4f1c-84f5-76fef365bb40
+        jobToken:
+          type: string
+          description: latest associated job token
+          example: bec66b3e-414f-4881-abea-117732611c30
+        status:
+          type: string
+          description: record status
+          enum:
+            - in-process
+            - complete
+            - process-error
+            - import-error
+            - obj-val-error
+            - ip-val-error
+            - build-ip-error
+            - prepare-ip-error
+            - build-sip-error
+            - transfer-error
+            - ingest-error
+        importType:
+          type: string
+          description:
+            method identifier of the import from the
+            origin system
+          enum:
+            - oai
+            - hotfolder
+        datetimeChanged:
+          $ref: '#/components/schemas/ISODateTime'
+        ignored:
+          type: boolean
+          description: |-
+            whether this record is currently being ignored
+
+            (this only applies to OAI-based records)
+
+            An ignored record will not be resumed or
+            imported/processed again in its current
+            revision (tracked via oaiDatestamp). If
+            the origin system is updated with a newer
+            version, it will be processed again.
+          example: False
+        bitstream:
+          type: boolean
+          description: |-
+            whether this record is planned to be or has
+            been processed as bitstream
+
+            If a record is processsed as bitstream, the
+            'Preservation-Level' is set to 'Bitstream'.
+          example: False
+        skipObjectValidation:
+          type: boolean
+          description:
+            whether this record is planned to be or has
+            been processed without object validation
+          example: False
+        oaiIdentifier:
+          type: string
+          description: |-
+            identifier in the origin system
+
+            (this only applies to OAI-based records)
+          example: oai:0
+        oaiDatestamp:
+          type: string
+          description: |-
+            revision datestamp in the origin system for
+            which this record has been processed
+
+            (this only applies to OAI-based records)
+          example: "2000-01-01"
+        hotfolderOriginalPath:
+          type: string
+          description: |-
+            original path within the hotfolder before
+            being imported to internal storage
+
+            (this only applies to hotfolder-based records)
+          example: some-job/ip0
+        archiveIeId:
+          type: string
+          description:
+            IE identifier assigned by the archive system
+          example: IE0001
+        archiveSipId:
+          type: string
+          description:
+            SIP identifier assigned by the archive system
+          example: SIP0001
+      required:
+        - id
+        - jobToken
+        - status
+    IE:
+      title: IE
+      type: object
+      description: intellectual entity (IE)
+      properties:
+        id:
+          type: string
+          description: DCM IE identifier
+          example: 0aaacfbf-fca1-4644-b244-e36f4c2c6c0f
+        jobConfigId:
+          type: string
+          description: job configuration identifier
+          example: 26046769-6f0f-4dc4-8725-0cfaa74b9c00
+        sourceOrganization:
+          type: string
+          description: source organization
+          example: Some Organization
+        originSystemId:
+          type: string
+          description: origin system identifier
+          example: some-source-system
+        externalId:
+          type: string
+          description: external identifier
+          example: oai:0
+        archiveId:
+          type: string
+          description: associated target archive identifier
+          example: e29c3a76-8c62-4f66-9336-5e7e4cef64a2
+        latestRecordId:
+          type: string
+          description: record identifier
+          example: f6488a74-2ceb-4f1c-84f5-76fef365bb40
+        records:
+          type: object
+          description: mapping of records for this IE
+          additionalProperties:
+            $ref: '#/components/schemas/Record'
+      required:
+        - id
+        - jobConfigId
+        - originSystemId
+        - externalId
+        - archiveId
     ConfigurationMetadataCreated:
       title: ConfigurationMetadataCreated
       description: configuration creation-metadata
@@ -2117,50 +2605,6 @@ components:
           - datetime: "2024-01-01T00:00:02+01:00"
             origin: Backend
             body: Job exited normally.
-    Record:
-      title: Record
-      description:
-        record generated in a job, e.g., an intellectual entity (IE)
-      properties:
-        reportId:
-          type: string
-          description:
-            identifier in the context of the report-object
-          example: oai:0478b6eb-6270-4a8b-bdc0-49e69a4e3e0d
-        success:
-          type: boolean
-          description:
-            whether a problem occurred while processing this record
-          example: true
-        originSystemId:
-          type: string
-          description:
-            identifier of the origin system
-          example: oai:origin
-        externalId:
-          type: string
-          description:
-            identifier of the record in the external system
-          example: b29bb376-3e2c-4a1e-af90-96c094daf5c3
-        sipId:
-          type: string
-          description:
-            SIP (Submission Information Package) identifier assigned by
-            the archive system
-          example: 86eab680-d4c4-4402-93b3-24a3cc7b9432
-        ieId:
-          type: string
-          description:
-            IE (Intellectual Entity) identifier assigned by the archive
-            system
-          example: ie0
-        datetimeProcessed:
-          $ref: '#/components/schemas/ISODateTime'
-        token:
-          $ref: '#/components/schemas/Token'
-      required:
-        - success
-        - reportId
     RosettaTarget:
       type: object
       title: RosettaTarget
@@ -2414,6 +2858,10 @@ components:
                   type: boolean
                   description: whether CORS requests are allowed
                   example: true
+                fs_mount_point:
+                  type: string
+                  description: mount point of shared file system
+                  example: /file_storage
                 orchestra:
                   type: object
                   description: orchestra-related settings
@@ -2609,6 +3057,7 @@ components:
                     - user_activation
               required:
                 - allow_cors
+                - fs_mount_point
                 - orchestra
                 - database
                 - scheduling

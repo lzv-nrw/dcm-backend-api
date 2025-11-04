@@ -1,5 +1,16 @@
 # Changelog
 
+## [5.0.0] - 2025-11-04
+
+### Changed
+
+- **Breaking:** refactored `job`-API to enable user-handling of validation errors
+
+### Added
+
+- added initial `artifact`-API
+- added configuration for shared file-system in `SelfDescription`-schema
+
 ## [4.0.0] - 2025-10-01
 
 ### Added
