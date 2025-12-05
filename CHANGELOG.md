@@ -1,5 +1,13 @@
 # Changelog
 
+## [5.3.0] - 2025-12-05
+
+### Added
+
+- added optional `collection`-object to `GET-/job` response
+- added `issues` and `issuesLatestExec` to `GET-/job/configure` response
+- added `bagInfoMetadata` in `IE`-schema
+
 ## [5.0.0] - 2025-11-04
 
 ### Changed

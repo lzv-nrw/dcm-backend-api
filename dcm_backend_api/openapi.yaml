@@ -4,7 +4,7 @@ info:
   description: |-
     This is the OpenAPI 3.0 specification describing the containers used
     for the backend in the context of the dcm in the lzvnrw-project.
-  version: 5.0.0
+  version: 5.3.0
 servers:
   - url: 'http://localhost:8080/'
 externalDocs:
@@ -476,6 +476,16 @@ paths:
                         description:
                           number of IEs associated with this job configuration
                         example: 1234
+                      issues:
+                        type: integer
+                        description:
+                          number of IEs associated with this job configuration that have an issue/error
+                        example: 12
+                      issuesLatestExec:
+                        type: integer
+                        description:
+                          number of IEs from the last execution of this job configuration that have an issue/error
+                        example: 8
                     required:
                       - id
         '400':
@@ -644,6 +654,7 @@ paths:
                   token:
                     type: string
                     description: job token
+                    example: 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
                   jobConfigId:
                     type: string
                     description: associated job configuration id
@@ -705,6 +716,28 @@ paths:
                     type: string
                     description: workspace identifier
                     example: 871d62ad-34bb-4a7e-8c45-780ab1918398
+                  collection:
+                    type: object
+                    description: information on related jobs
+                    properties:
+                      completed:
+                        type: boolean
+                        description: whether collection is completed
+                        example: true
+                      tokens:
+                        type: array
+                        description:
+                          array of related job tokens; ordered by datetime
+                          (ascending)
+                        items:
+                          type: string
+                          description: job token
+                        example:
+                          - c3c5db37-7bf9-4914-b097-f69775ecf59d
+                          - 37ee72d6-80ab-4dcd-a68d-f8d32766c80d
+                    required:
+                      - completed
+                      - tokens
                 required:
                   - token
         '400':
@@ -2034,6 +2067,14 @@ components:
           type: string
           description: associated target archive identifier
           example: e29c3a76-8c62-4f66-9336-5e7e4cef64a2
+        bagInfoMetadata:
+          type: object
+          description: metadata from bag-info.txt
+          additionalProperties:
+            type: array
+            description: values of a metadata field
+            items:
+              type: string
         latestRecordId:
           type: string
           description: record identifier
